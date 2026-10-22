@@ -6,6 +6,8 @@
   "engines": { "node": ">=24" },
   "scripts": {
     "start": "node --experimental-transform-types src/server.mjs",
-    "test": "node --experimental-transform-types --test test/*.test.mjs"
+    "test": "node --experimental-transform-types --test test/*.test.mjs",
+    "verify:live": "node --experimental-transform-types src/live-run.mjs"
   }
 }
+
