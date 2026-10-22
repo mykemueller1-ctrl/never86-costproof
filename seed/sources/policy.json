@@ -1,0 +1,16 @@
+{
+  "source_family": "policy",
+  "not_a_customer_result": true,
+  "records": [
+    {
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "currency": "USD",
+      "restaurant_id": "demo-101",
+      "shift_id": "demo-101-2026-10-23-dinner",
+      "business_date": "2026-10-23",
+      "id": "policy-demo-101-v1",
+      "labor_target_basis_points": 2800,
+      "target_scope": "same shift, net sales denominator, straight time wage scope"
+    }
+  ]
+}

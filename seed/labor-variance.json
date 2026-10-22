@@ -1,0 +1,15 @@
+{
+  "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+  "not_a_customer_result": true,
+  "currency": "USD",
+  "restaurant_id": "demo-101",
+  "shift_id": "demo-101-2026-10-23-dinner",
+  "business_date": "2026-10-23",
+  "sources": {
+    "sales": {"id": "sales-demo-101-dinner", "planned_net_sales_cents": 1350000, "actual_net_sales_cents": 1200000},
+    "labor": {"id": "labor-demo-101-dinner", "planned_hours": 126, "actual_hours": 132, "hourly_rate_cents": 3000, "planned_labor_cents": 378000, "actual_labor_cents": 396000, "wage_scope": "synthetic straight time wages only; no tax, benefits, tips or overtime"},
+    "policy": {"id": "policy-demo-101-v1", "labor_target_basis_points": 2800, "target_scope": "same shift, net sales denominator, straight time wage scope"},
+    "manager_correction": {"id": "note-demo-101-training", "classification": "UNVERIFIED_MANAGER_REPORT", "text": "The six additional hours were approved training at $30 per hour. Check the sales forecast before proposing a staffing cut.", "applies_only_to_shift_id": "demo-101-2026-10-23-dinner"}
+  },
+  "expected": {"allowed_labor_cents": 336000, "actual_labor_basis_points": 3300, "variance_basis_points": 500, "above_target_cents": 60000, "sales_denominator_bridge_cents": 42000, "labor_dollar_bridge_cents": 18000, "causal_attribution": "not established", "realized_savings": "not established"}
+}

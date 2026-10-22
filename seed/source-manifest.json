@@ -1,0 +1,40 @@
+{
+  "stage": "DECLARED_PREWINDOW_SYNTHETIC_DATA_PREPARATION",
+  "application_implemented": false,
+  "zetaris_registered": false,
+  "http_source_hosted": false,
+  "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+  "sources": {
+    "sales": {
+      "file": "seed/sources/sales.json",
+      "source_id": "sales-demo-101-dinner",
+      "sha256": "f8037fc1b59acd2e4471318076165a708f5f2a57a3aa8914f38736210f25669c"
+    },
+    "labor": {
+      "file": "seed/sources/labor.json",
+      "source_id": "labor-demo-101-dinner",
+      "sha256": "620acb514e7c94812d6beeeff5f97825daa99357051f4a18cefafae2c8e2e331"
+    },
+    "policy": {
+      "file": "seed/sources/policy.json",
+      "source_id": "policy-demo-101-v1",
+      "sha256": "4cd35d1011b62f5c34de5bb744be2d510d9bf81dc5c28be98ff922e601ee051c"
+    },
+    "manager_correction": {
+      "file": "seed/sources/manager_correction.json",
+      "source_id": "note-demo-101-training",
+      "sha256": "1f5feeb6632de12aaa9e94c50dbbfd6118852bc3ea1abd2367c1c24dbd420eea"
+    }
+  },
+  "negative_case": "seed/sources/labor_missing_wages.json",
+  "math_checks": {
+    "planned_labor_cents": 378000,
+    "actual_labor_cents": 396000,
+    "allowed_labor_cents": 336000,
+    "above_target_cents": 60000,
+    "sales_effect_cents": 42000,
+    "labor_effect_cents": 18000,
+    "actual_labor_basis_points": 3300,
+    "passed": true
+  }
+}

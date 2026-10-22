@@ -1,0 +1,19 @@
+{
+  "schema_version": "costproof.sample-receipt.v1",
+  "created_at_utc": "2026-10-22T02:34:44.859Z",
+  "classification": "DETERMINISTIC_SYNTHETIC_FIXTURE",
+  "scenario": "complete",
+  "api_scenario": "complete",
+  "expected_outcome": "reconciled",
+  "outcome": "reconciled",
+  "contract_passed": true,
+  "gap_cents": 60000,
+  "currency": "USD",
+  "refusal_code": null,
+  "model_used": false,
+  "live_zetaris_query": false,
+  "live_nightshift_call": false,
+  "memory_input": "Fresh isolated H-MEM store; no existing manager reports",
+  "trace_file": "complete.trace.json",
+  "claim_boundary": "Dated deterministic fixture replay. No customer result, causal conclusion, savings or live sponsor connection is established."
+}

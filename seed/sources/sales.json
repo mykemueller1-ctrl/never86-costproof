@@ -1,0 +1,16 @@
+{
+  "source_family": "sales",
+  "not_a_customer_result": true,
+  "records": [
+    {
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "currency": "USD",
+      "restaurant_id": "demo-101",
+      "shift_id": "demo-101-2026-10-23-dinner",
+      "business_date": "2026-10-23",
+      "id": "sales-demo-101-dinner",
+      "planned_net_sales_cents": 1350000,
+      "actual_net_sales_cents": 1200000
+    }
+  ]
+}

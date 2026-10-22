@@ -1,0 +1,17 @@
+{
+  "source_family": "manager_correction",
+  "not_a_customer_result": true,
+  "records": [
+    {
+      "classification": "UNVERIFIED_MANAGER_REPORT",
+      "currency": "USD",
+      "restaurant_id": "demo-101",
+      "shift_id": "demo-101-2026-10-23-dinner",
+      "business_date": "2026-10-23",
+      "id": "note-demo-101-training",
+      "text": "The six additional hours were approved training at $30 per hour. Check the sales forecast before proposing a staffing cut.",
+      "applies_only_to_shift_id": "demo-101-2026-10-23-dinner",
+      "fixture_classification": "SYNTHETIC_COMPETITION_FIXTURE"
+    }
+  ]
+}

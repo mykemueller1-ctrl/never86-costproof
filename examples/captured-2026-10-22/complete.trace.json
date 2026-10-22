@@ -1,0 +1,211 @@
+{
+  "schema_version": "costproof.sample-trace.v1",
+  "created_at_utc": "2026-10-22T02:34:44.859Z",
+  "classification": "DETERMINISTIC_SYNTHETIC_FIXTURE",
+  "scenario": "complete",
+  "request": {
+    "question": "Why did dinner labor finish above target?",
+    "scenario": "complete",
+    "liveModel": false,
+    "sourceMode": "fixture"
+  },
+  "execution_events": [
+    {
+      "stage": "invoke_investigate",
+      "created_at_utc": "2026-10-22T02:34:44.859Z",
+      "request": {
+        "question": "Why did dinner labor finish above target?",
+        "scenario": "complete",
+        "liveModel": false,
+        "sourceMode": "fixture"
+      }
+    },
+    {
+      "stage": "investigate_returned",
+      "status": "reconciled"
+    }
+  ],
+  "result": {
+    "status": "reconciled",
+    "scope": {
+      "restaurant_id": "demo-101",
+      "shift_id": "demo-101-2026-10-23-dinner",
+      "business_date": "2026-10-23",
+      "currency": "USD"
+    },
+    "evidence": [
+      {
+        "id": "sales-demo-101-dinner",
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "currency": "USD"
+      },
+      {
+        "id": "labor-demo-101-dinner",
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "currency": "USD"
+      },
+      {
+        "id": "policy-demo-101-v1",
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "currency": "USD"
+      }
+    ],
+    "headline": "The labor gap is reconciled. Its cause still needs evidence.",
+    "metrics": {
+      "actual_sales_cents": 1200000,
+      "actual_labor_cents": 396000,
+      "target_labor_cents": 336000,
+      "target_percent": 28,
+      "actual_labor_percent": 33,
+      "variance_percentage_points": 5,
+      "gap_cents": 60000
+    },
+    "bridge": [
+      {
+        "label": "Planned labor variance",
+        "cents": 0,
+        "source_ids": [
+          "sales-demo-101-dinner",
+          "labor-demo-101-dinner",
+          "policy-demo-101-v1"
+        ]
+      },
+      {
+        "label": "Sales plan change: target denominator effect",
+        "cents": 42000,
+        "source_ids": [
+          "sales-demo-101-dinner",
+          "policy-demo-101-v1"
+        ]
+      },
+      {
+        "label": "Change in labor dollars from plan",
+        "cents": 18000,
+        "source_ids": [
+          "labor-demo-101-dinner"
+        ]
+      }
+    ],
+    "limitations": [
+      "Synthetic competition scenario. These are not customer results.",
+      "The bridge is accounting reconciliation, not causal attribution or recovered savings.",
+      "Straight time wage scope excludes taxes, benefits, tips and overtime."
+    ],
+    "question": "Why did dinner labor finish above target?",
+    "corrections": [],
+    "trace": [
+      {
+        "role": "memory",
+        "tool": "Meterless H-MEM",
+        "recalled": 0,
+        "scope": {
+          "restaurant_id": "demo-101",
+          "shift_id": "demo-101-2026-10-23-dinner",
+          "business_date": "2026-10-23",
+          "currency": "USD"
+        },
+        "verified": true
+      },
+      {
+        "role": "source",
+        "tool": "local_fixture_read",
+        "source_id": "sales-demo-101-dinner",
+        "file": "seed/sources/sales.json",
+        "integration_verified": false
+      },
+      {
+        "role": "source",
+        "tool": "local_fixture_read",
+        "source_id": "labor-demo-101-dinner",
+        "file": "seed/sources/labor.json",
+        "integration_verified": false
+      },
+      {
+        "role": "source",
+        "tool": "local_fixture_read",
+        "source_id": "policy-demo-101-v1",
+        "file": "seed/sources/policy.json",
+        "integration_verified": false
+      },
+      {
+        "role": "calculator",
+        "stage": "scope_and_cents",
+        "status": "reconciled",
+        "evidence_ids": [
+          "sales-demo-101-dinner",
+          "labor-demo-101-dinner",
+          "policy-demo-101-v1"
+        ],
+        "verified": true
+      }
+    ],
+    "source_records": {
+      "sales": {
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "currency": "USD",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "id": "sales-demo-101-dinner",
+        "planned_net_sales_cents": 1350000,
+        "actual_net_sales_cents": 1200000
+      },
+      "labor": {
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "currency": "USD",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "id": "labor-demo-101-dinner",
+        "planned_hours": 126,
+        "actual_hours": 132,
+        "hourly_rate_cents": 3000,
+        "planned_labor_cents": 378000,
+        "actual_labor_cents": 396000,
+        "wage_scope": "synthetic straight time wages only; no tax, benefits, tips or overtime"
+      },
+      "policy": {
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "currency": "USD",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "id": "policy-demo-101-v1",
+        "labor_target_basis_points": 2800,
+        "target_scope": "same shift, net sales denominator, straight time wage scope"
+      }
+    },
+    "source_provider": "local synthetic files",
+    "integration": {
+      "hmem": true,
+      "zetaris": false,
+      "nightshift_discovery": false,
+      "nightshift_text": false,
+      "competition_ready": false
+    },
+    "analysis": null,
+    "evidence_requests": [],
+    "evidence_review": {
+      "status": "not_requested",
+      "semantic_support": "not_reviewed"
+    },
+    "proposed_action": {
+      "owner": "Restaurant manager",
+      "status": "unsent proposal",
+      "text": "Compare the recorded labor hours with shift approval and time records, then check the sales forecast."
+    },
+    "mode": "Deterministic synthetic preview"
+  },
+  "error": null,
+  "contract_error": null,
+  "trace_availability": "Full returned investigation, including its actual application trace."
+}

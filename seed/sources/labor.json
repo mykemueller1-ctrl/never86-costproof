@@ -1,0 +1,20 @@
+{
+  "source_family": "labor",
+  "not_a_customer_result": true,
+  "records": [
+    {
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "currency": "USD",
+      "restaurant_id": "demo-101",
+      "shift_id": "demo-101-2026-10-23-dinner",
+      "business_date": "2026-10-23",
+      "id": "labor-demo-101-dinner",
+      "planned_hours": 126,
+      "actual_hours": 132,
+      "hourly_rate_cents": 3000,
+      "planned_labor_cents": 378000,
+      "actual_labor_cents": 396000,
+      "wage_scope": "synthetic straight time wages only; no tax, benefits, tips or overtime"
+    }
+  ]
+}

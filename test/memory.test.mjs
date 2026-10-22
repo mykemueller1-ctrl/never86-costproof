@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { rememberCorrection, recallCorrections } from '../src/memory.mjs';
+import { SCOPE } from '../src/reconcile.mjs';
+const note = JSON.parse(await readFile(new URL('../seed/sources/manager_correction.json', import.meta.url))).records[0];
+test('actual H-MEM survives a fresh Node process and retains provenance plus audit', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'costproof-hmem-'));
+  const saved = await rememberCorrection(SCOPE, note, root);
+  const program = `import {recallCorrections} from ${JSON.stringify(new URL('../src/memory.mjs', import.meta.url).href)}; console.log(JSON.stringify(await recallCorrections(${JSON.stringify(SCOPE)}, 'labor training', ${JSON.stringify(root)})));`;
+  const child = spawnSync(process.execPath, ['--experimental-transform-types', '--input-type=module', '-e', program], { encoding: 'utf8' });
+  assert.equal(child.status, 0, child.stderr);
+  const recalled = JSON.parse(child.stdout); assert.equal(recalled.length, 1);
+  assert.equal(recalled[0].memory_id, saved.id); assert.equal(recalled[0].note.classification, 'UNVERIFIED_MANAGER_REPORT');
+  assert.equal(recalled[0].note.payroll_overridden, false); assert.equal(recalled[0].note.scope.shift_id, SCOPE.shift_id);
+  assert.ok(recalled[0].audit.some(e => e.action === 'create')); assert.ok(recalled[0].audit.some(e => e.action === 'read'));
+  assert.equal((await rememberCorrection(SCOPE, note, root)).created, false);
+  assert.deepEqual(await recallCorrections({ ...SCOPE, restaurant_id: 'other' }, 'labor training', root), []);
+  await assert.rejects(rememberCorrection(SCOPE, { ...note, restaurant_id: 'other' }, root), /scope/);
+});

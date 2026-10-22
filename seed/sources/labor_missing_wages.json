@@ -1,0 +1,21 @@
+{
+  "source_family": "labor",
+  "not_a_customer_result": true,
+  "records": [
+    {
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "currency": "USD",
+      "restaurant_id": "demo-101",
+      "shift_id": "demo-101-2026-10-23-dinner",
+      "business_date": "2026-10-23",
+      "id": "labor-demo-101-dinner-missing-wages",
+      "planned_hours": 126,
+      "actual_hours": 132,
+      "hourly_rate_cents": null,
+      "planned_labor_cents": null,
+      "actual_labor_cents": null,
+      "missing_record": "wage/payroll dollars for this same restaurant and shift",
+      "expected_behavior": "Ask for the missing wage/payroll record. Do not produce payroll dollars, a dollar variance or a savings claim."
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "never86-costproof",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node --experimental-transform-types src/server.mjs",
+    "test": "node --experimental-transform-types --test test/*.test.mjs"
+  }
+}

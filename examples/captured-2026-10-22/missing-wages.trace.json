@@ -1,0 +1,212 @@
+{
+  "schema_version": "costproof.sample-trace.v1",
+  "created_at_utc": "2026-10-22T02:34:44.891Z",
+  "classification": "DETERMINISTIC_SYNTHETIC_FIXTURE",
+  "scenario": "missing-wages",
+  "request": {
+    "question": "Why did dinner labor finish above target?",
+    "scenario": "missing-wages",
+    "liveModel": false,
+    "sourceMode": "fixture"
+  },
+  "execution_events": [
+    {
+      "stage": "invoke_investigate",
+      "created_at_utc": "2026-10-22T02:34:44.891Z",
+      "request": {
+        "question": "Why did dinner labor finish above target?",
+        "scenario": "missing-wages",
+        "liveModel": false,
+        "sourceMode": "fixture"
+      }
+    },
+    {
+      "stage": "investigate_returned",
+      "status": "needs_evidence"
+    }
+  ],
+  "result": {
+    "status": "needs_evidence",
+    "scope": {
+      "restaurant_id": "demo-101",
+      "shift_id": "demo-101-2026-10-23-dinner",
+      "business_date": "2026-10-23",
+      "currency": "USD"
+    },
+    "evidence": [
+      {
+        "id": "sales-demo-101-dinner",
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "currency": "USD"
+      },
+      {
+        "id": "labor-demo-101-dinner-missing-wages",
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "currency": "USD"
+      },
+      {
+        "id": "policy-demo-101-v1",
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "currency": "USD"
+      }
+    ],
+    "missing": [
+      "planned_labor_cents",
+      "actual_labor_cents"
+    ],
+    "headline": "Wage records are missing. Dollar conclusions are stopped.",
+    "request": "Provide wage/payroll dollars for this same restaurant and shift.",
+    "metrics": null,
+    "bridge": null,
+    "limitations": [
+      "Hours alone do not establish payroll dollars or savings."
+    ],
+    "question": "Why did dinner labor finish above target?",
+    "corrections": [],
+    "trace": [
+      {
+        "role": "memory",
+        "tool": "Meterless H-MEM",
+        "recalled": 0,
+        "scope": {
+          "restaurant_id": "demo-101",
+          "shift_id": "demo-101-2026-10-23-dinner",
+          "business_date": "2026-10-23",
+          "currency": "USD"
+        },
+        "verified": true
+      },
+      {
+        "role": "source",
+        "tool": "local_fixture_read",
+        "source_id": "sales-demo-101-dinner",
+        "file": "seed/sources/sales.json",
+        "integration_verified": false
+      },
+      {
+        "role": "source",
+        "tool": "local_fixture_read",
+        "source_id": "labor-demo-101-dinner-missing-wages",
+        "file": "seed/sources/labor_missing_wages.json",
+        "integration_verified": false
+      },
+      {
+        "role": "source",
+        "tool": "local_fixture_read",
+        "source_id": "policy-demo-101-v1",
+        "file": "seed/sources/policy.json",
+        "integration_verified": false
+      },
+      {
+        "role": "calculator",
+        "stage": "scope_and_cents",
+        "status": "needs_evidence",
+        "evidence_ids": [
+          "sales-demo-101-dinner",
+          "labor-demo-101-dinner-missing-wages",
+          "policy-demo-101-v1"
+        ],
+        "verified": true
+      },
+      {
+        "role": "investigator",
+        "stage": "request_missing_evidence",
+        "requests": [
+          {
+            "record": "Provide wage/payroll dollars for this same restaurant and shift.",
+            "scope": {
+              "restaurant_id": "demo-101",
+              "shift_id": "demo-101-2026-10-23-dinner",
+              "business_date": "2026-10-23",
+              "currency": "USD"
+            },
+            "origin": "deterministic_coverage_check",
+            "status": "not_available_in_current_sources"
+          }
+        ],
+        "conclusion_held": true
+      }
+    ],
+    "source_records": {
+      "sales": {
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "currency": "USD",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "id": "sales-demo-101-dinner",
+        "planned_net_sales_cents": 1350000,
+        "actual_net_sales_cents": 1200000
+      },
+      "labor": {
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "currency": "USD",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "id": "labor-demo-101-dinner-missing-wages",
+        "planned_hours": 126,
+        "actual_hours": 132,
+        "hourly_rate_cents": null,
+        "planned_labor_cents": null,
+        "actual_labor_cents": null,
+        "missing_record": "wage/payroll dollars for this same restaurant and shift",
+        "expected_behavior": "Ask for the missing wage/payroll record. Do not produce payroll dollars, a dollar variance or a savings claim."
+      },
+      "policy": {
+        "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+        "currency": "USD",
+        "restaurant_id": "demo-101",
+        "shift_id": "demo-101-2026-10-23-dinner",
+        "business_date": "2026-10-23",
+        "id": "policy-demo-101-v1",
+        "labor_target_basis_points": 2800,
+        "target_scope": "same shift, net sales denominator, straight time wage scope"
+      }
+    },
+    "source_provider": "local synthetic files",
+    "integration": {
+      "hmem": true,
+      "zetaris": false,
+      "nightshift_discovery": false,
+      "nightshift_text": false,
+      "competition_ready": false
+    },
+    "analysis": null,
+    "evidence_requests": [
+      {
+        "record": "Provide wage/payroll dollars for this same restaurant and shift.",
+        "scope": {
+          "restaurant_id": "demo-101",
+          "shift_id": "demo-101-2026-10-23-dinner",
+          "business_date": "2026-10-23",
+          "currency": "USD"
+        },
+        "origin": "deterministic_coverage_check",
+        "status": "not_available_in_current_sources"
+      }
+    ],
+    "evidence_review": {
+      "status": "blocked_by_missing_records",
+      "semantic_support": "not_reviewed"
+    },
+    "proposed_action": {
+      "owner": "Restaurant manager",
+      "status": "unsent proposal",
+      "text": "Provide wage/payroll dollars for this same restaurant and shift."
+    },
+    "mode": "Deterministic synthetic preview"
+  },
+  "error": null,
+  "contract_error": null,
+  "trace_availability": "Full returned investigation, including its actual application trace."
+}

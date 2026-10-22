@@ -1,0 +1,10 @@
+**/node_modules/
+**/.notebook/
+.env
+.env.*
+!.env.example
+*.log
+dist/
+coverage/
+.costproof/
+.test-state/

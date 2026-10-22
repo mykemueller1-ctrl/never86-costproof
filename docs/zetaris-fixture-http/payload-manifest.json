@@ -1,0 +1,29 @@
+{
+  "snapshot_only": true,
+  "created_at_utc": "2026-10-22T02:31:11.023Z",
+  "runtime_manifest": "/manifest.json",
+  "zetaris_registration_verified": false,
+  "endpoints": [
+    {
+      "path": "/sales.json",
+      "canonical_file": "seed/sources/sales.json",
+      "sha256": "f8037fc1b59acd2e4471318076165a708f5f2a57a3aa8914f38736210f25669c",
+      "bytes": 433,
+      "source_id": "sales-demo-101-dinner"
+    },
+    {
+      "path": "/labor.json",
+      "canonical_file": "seed/sources/labor.json",
+      "sha256": "620acb514e7c94812d6beeeff5f97825daa99357051f4a18cefafae2c8e2e331",
+      "bytes": 609,
+      "source_id": "labor-demo-101-dinner"
+    },
+    {
+      "path": "/policy.json",
+      "canonical_file": "seed/sources/policy.json",
+      "sha256": "4cd35d1011b62f5c34de5bb744be2d510d9bf81dc5c28be98ff922e601ee051c",
+      "bytes": 474,
+      "source_id": "policy-demo-101-v1"
+    }
+  ]
+}
