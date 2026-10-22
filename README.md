@@ -2,7 +2,7 @@
 
 See the dollar gap. Check the records. Decide the next step.
 
-Public development repository: [mykemueller1-ctrl/never86-costproof](https://github.com/mykemueller1-ctrl/never86-costproof). The entry remains a development draft; live sponsor workflow and final submission are pending. [Source provenance](docs/source-provenance.md) distinguishes the published snapshot from prior local development.
+Public development repository: [mykemueller1-ctrl/never86-costproof](https://github.com/mykemueller1-ctrl/never86-costproof). This Node application is the competition build. The entry remains a development draft; live sponsor workflow and final submission are pending. [Source provenance](docs/source-provenance.md) distinguishes the published snapshot from prior local development.
 
 This new competition application investigates a restaurant labor target variance. A working local preview now reconciles a synthetic $600 gap, shows the separate records, rejects scope mismatches and stops dollar conclusions when wages are missing. Real Meterless H-MEM stores reviewed manager reports with provenance and fresh-process recall. A live Nightshift model and real Zetaris queries are still pending. The entry remains a draft.
 
@@ -48,8 +48,17 @@ node --experimental-transform-types notebook.ts audit mem-1
 
 The default starter is retrieval only. No model, external tenant or production data is used by these commands. The Node type transformation flag is experimental. A normal tsx setup is also described in the sponsor's unchanged README. The local `npm` command is unavailable; the smoke check used the installed Node runtime directly.
 
+## Verify the live workflow
+
+Run `node --experimental-transform-types src/live-run.mjs` after the real local Zetaris and Nightshift services are configured. It executes the existing application path and writes a pass-or-blocked receipt with the actual returned trace. Fixture sources, injected test transport and discovery without model text cannot pass. See [live acceptance](docs/live-acceptance.md) for requirements and the four-minute deadline.
+
+The current local suite passes **48 checks**, including six checks for the live-receipt gate. The published baseline commit `f3a1cc4` also passed [GitHub Actions](https://github.com/mykemueller1-ctrl/never86-costproof/actions/runs/39729434110), including all three deterministic replays. That baseline CI result does not establish live sponsor execution. The new live command correctly reports `ZETARIS_CONFIG_MISSING` when run without local configuration.
+
+Use the [current demonstration script](docs/demo-script.md) and [current pitch deck](docs/CostProof_Pitch.pptx). They match this application's $420 plus $180 bridge, reviewed manager context and unsent proposed action. Do not substitute a separate Python prototype's arithmetic or action-state claims.
+
 ## Build next
 
 Read [the specification](docs/prd.md) and [Cursor kickoff](docs/cursor-kickoff.md). Complete Windows WSL/Docker startup and the real Zetaris source query. The [synthetic HTTP source helper](docs/zetaris-fixture-http/README.md) prepares three independent endpoints and an unexecuted registration plan. Finish installing a local Nightshift model and capture an actual text response. Then validate the investigator and critic against those real connections before recording the final video and finalizing the deck and repository.
 
 Public starter source: Meterless/Meterless commit `1742dec56a66e58eef9dda2d2b865823758ca8cd`. The starter and vendored reference retain the sponsor's Apache 2.0 license. No separate license for the new application has been selected. The public source is a development snapshot, with prior work disclosed.
+
