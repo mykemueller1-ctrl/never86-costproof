@@ -161,7 +161,7 @@ function display(result) {
   const corrections = result.corrections || [];
   $('context-change').hidden = corrections.length === 0;
   set('context-next-check', result.proposed_action.text);
-  set('context-explanation', result.status === 'needs_evidence' ? 'The wage record is still required. Remembered context cannot fill missing dollars. The statement remains unverified.' : 'The report changes the next check. Labor dollars still come from the source records. The statement remains unverified.');
+  set('context-explanation', result.status === 'needs_evidence' ? 'The wage record is still required. Remembered context cannot fill missing dollars. The statement remains unverified.' : 'The recalled report is available as scoped context. Labor dollars still come from source records. The statement remains unverified.');
   $('report-provenance').replaceChildren(...corrections.map(row => reportCard(row)));
   $('model-analysis').replaceChildren();
   if (result.analysis?.rendering === 'code_from_validated_model_selection') {
