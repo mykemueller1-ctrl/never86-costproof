@@ -54,7 +54,9 @@ Run `node --experimental-transform-types src/live-run.mjs` after the real local 
 
 The current local suite passed **84 checks on October 24 UTC**, including live-receipt gates, typed decision/rendering bindings, strict model contracts, request-scope isolation and preserved-draft refusal cases. The gate checks both supported Zetaris transports and requires actual Nightshift planning, fact selection and accepted critique. A source-only reconciliation and an offline replay of captured model text cannot pass. The full probe and separate UI run passed that gate; the UI result was manually accepted for the limited synthetic demo. Original provider finish status and raw usage of any selected Runtime-preserved draft remain unknown, as [documented](docs/nightshift-provider.md). The published baseline commit `f3a1cc4` passed [GitHub Actions](https://github.com/mykemueller1-ctrl/never86-costproof/actions/runs/39729434110); this historical result is not a CI claim for the current revision. The live command reports a blocked receipt when required local configuration is absent.
 
-Use the [current demonstration script](docs/demo-script.md) and [current pitch deck](docs/CostProof_Pitch.pptx). They match this application's $420 plus $180 bridge, reviewed manager context and unsent proposed action. Do not substitute a separate Python prototype's arithmetic or action-state claims.
+Use the [current demonstration script](docs/demo-script.md) and [current pitch deck (v7)](https://hackathon-server.genai.works/api/v1/cdn/proxy/hackathon/7991670d212f4bde8a45fff10ba304b6.pptx). They match this application's $420 plus $180 bridge, reviewed manager context and unsent proposed action. Do not substitute a separate Python prototype's arithmetic or action-state claims.
+
+The repository [deck file](docs/CostProof_Pitch.pptx) is a historical development snapshot.
 
 ## Finish the entry
 
