@@ -6,194 +6,158 @@ import path from 'node:path';
 import { investigate } from '../src/investigate.mjs';
 import { rememberCorrection } from '../src/memory.mjs';
 import { SCOPE } from '../src/reconcile.mjs';
-const salesId = JSON.parse(await readFile(new URL('../seed/sources/sales.json', import.meta.url))).records[0].id;
-function stubModel(json) {
-  return { model: 'meterless/test-stub', discover: async () => ({ status: 'online', verified: true, models: ['meterless/test-stub'] }), json };
+import { readFixture } from '../src/sources.mjs';
+
+const root = () => mkdtemp(path.join(tmpdir(), 'costproof-typed-stub-'));
+const approve = { accepted: true, issues: [], missing_evidence: [] };
+function selection(packet, keys = ['metrics.gap_cents'], next = {}) {
+  return { claims: [keys.length === 2 ? { kind: 'accounting_bridge', component_key: keys[1] } : { kind: 'metric_observation', metric_key: keys[0] }],
+    limitation_ids: Object.keys(packet.decision_options.required_limitations), next_check: { kind: 'verify_shift_approval_and_time_records', report_ids: [], ...next } };
 }
-test('deterministic preview never claims sponsor query or model integration', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-preview-'));
-  const result = await investigate({}, { memoryRoot });
-  assert.equal(result.metrics.gap_cents, 60000); assert.equal(result.integration.zetaris, false);
-  assert.equal(result.integration.nightshift_text, false); assert.equal(result.integration.competition_ready, false);
+// Injected model decisions only, never actual sponsor inference.
+function stub(explain = packet => selection(packet), review = () => approve, plan = () => ['sales', 'labor', 'policy']) {
+  return { model: 'meterless/test-stub', discover: async () => ({ status: 'online', verified: true, models: ['meterless/test-stub'] }),
+    json: async (role, instruction, packet) => ({ route: 'meterless/test-stub', model_text_returned: true,
+      value: instruction.startsWith('Plan') ? { source_order: plan(packet) } : role === 'evidence_critic' ? await review(packet) : await explain(packet) }) };
+}
+test('deterministic preview does not claim a source query or model integration', async () => {
+  const r = await investigate({}, { memoryRoot: await root() });
+  assert.equal(r.metrics.gap_cents, 60000); assert.equal(r.integration.zetaris, false);
+  assert.equal(r.integration.nightshift_text, false); assert.equal(r.integration.competition_ready, false);
 });
-test('agent orchestration retries a rejected explanation then escalates; stub is not sponsor evidence', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-agent-'));
-  const calls = [];
-  const model = { model: 'meterless/test-stub', discover: async () => ({ status: 'online', verified: true, models: ['meterless/test-stub'] }), json: async (role, instruction, packet) => {
-    calls.push(role);
-    if (instruction.startsWith('Plan')) return { value: { source_order: ['labor', 'sales', 'policy'], reason: 'Question about labor' } };
-    if (role === 'evidence_critic') return { value: { accepted: false, issues: ['Unsupported cause'], missing_evidence: ['approval record'] } };
-    return { value: { claims: [{ text: 'Unsupported cause', source_ids: ['invented'], metric_refs: [] }], next_check: 'Verify approval.' } };
-  } };
-  const result = await investigate({ liveModel: true }, { model, memoryRoot });
-  assert.equal(result.analysis, null); assert.match(result.mode, /Escalated/);
-  assert.deepEqual(calls, ['investigator', 'investigator', 'evidence_critic', 'investigator', 'evidence_critic']);
-  assert.equal(result.integration.competition_ready, false);
-  assert.equal(result.evidence_review.status, 'rejected');
-  assert.equal(result.evidence_requests[0].record, 'approval record');
-  assert.equal(result.evidence_requests[0].scope.shift_id, SCOPE.shift_id);
-  assert.ok(result.trace.some(row => row.stage === 'request_missing_evidence' && row.tools_exhausted === true));
-});
-test('a critique rejection changes the second explanation request and only a clean review accepts it', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-retry-'));
-  let explanations = 0;
-  const model = stubModel(async (role, instruction, packet) => {
-    if (instruction.startsWith('Plan')) return { value: { source_order: ['policy', 'sales', 'labor'] } };
-    if (role === 'investigator') {
-      explanations++;
-      if (explanations === 2) {
-        assert.equal(packet.critic_feedback.evidence_requests[0].record, 'Manager approval');
-        assert.equal(packet.critic_feedback.evidence_requests[0].status, 'not_available_in_current_sources');
-        assert.equal(packet.source_records.manager_approval, undefined);
-      }
-      return { value: { claims: [{ text: explanations === 1 ? 'The sales record proves training approval.' : 'The sales record reports synthetic sales; training approval remains unavailable.', source_ids: [salesId], metric_refs: [] }], next_check: 'Ask for the shift approval record.' } };
+test('critic feedback changes the second typed choice without fabricating the requested record', async () => {
+  let attempts = 0;
+  const model = stub(packet => {
+    if (++attempts === 2) {
+      assert.equal(packet.critic_feedback.evidence_requests[0].record, 'Manager approval');
+      assert.equal(packet.critic_feedback.evidence_requests[0].status, 'not_available_in_current_sources');
+      assert.equal(packet.source_records.manager_approval, undefined);
     }
-    return { value: explanations === 1 ? { accepted: false, issues: ['The sales record cannot establish training approval.'], missing_evidence: ['Manager approval'] } : { accepted: true, issues: [], missing_evidence: [] } };
-  });
-  const result = await investigate({ liveModel: true }, { model, memoryRoot });
-  assert.equal(explanations, 2);
-  assert.ok(result.analysis);
-  assert.equal(result.evidence_review.status, 'accepted_by_model_critic');
-  assert.equal(result.evidence_review.semantic_support, 'model_reviewed_not_independent_verification');
-  assert.deepEqual(result.evidence_requests, []);
-  assert.deepEqual(result.trace.filter(row => row.role === 'source').map(row => row.source_id.split('-')[0]), ['policy', 'sales', 'labor']);
-  assert.equal(result.proposed_action.status, 'unsent proposal');
-  assert.equal(result.integration.competition_ready, false);
+    return selection(packet, attempts === 1 ? ['metrics.target_percent'] : ['metrics.gap_cents', 'bridge.sales_denominator_effect_cents']);
+  }, () => attempts === 1 ? { accepted: false, issues: ['Select the relevant gap.'], missing_evidence: ['Manager approval'] } : approve,
+  () => ['policy', 'sales', 'labor']);
+  const r = await investigate({ liveModel: true }, { model, memoryRoot: await root() });
+  assert.equal(attempts, 2); assert.equal(r.evidence_review.attempts, 2); assert.equal(r.evidence_review.typed_decision_valid, true);
+  assert.equal(r.analysis.rendering, 'code_from_validated_model_selection');
+  assert.deepEqual(r.trace.filter(x => x.role === 'source').map(x => x.source_id.split('-')[0]), ['policy', 'sales', 'labor']);
+  assert.deepEqual(r.evidence_requests, []); assert.equal(r.proposed_action.status, 'unsent proposal');
+  assert.equal(r.proposed_action.text, r.analysis.next_check);
 });
-test('an approving critic cannot bypass a missing or invented citation', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-citations-'));
-  for (const claim of [{ text: 'The gap has an unsupported source.', source_ids: ['invented'], metric_refs: [] }, { text: '   ', source_ids: [salesId], metric_refs: [] }]) {
-    const model = stubModel(async (role, instruction) => ({ value: instruction.startsWith('Plan') ? { source_order: ['sales', 'labor', 'policy'] } : role === 'evidence_critic' ? { accepted: true, issues: [], missing_evidence: [] } : { claims: [claim], next_check: 'Check approval.' } }));
-    const result = await investigate({ liveModel: true }, { model, memoryRoot });
-    assert.equal(result.analysis, null);
-    assert.equal(result.evidence_review.citations_valid, false);
-    assert.match(result.mode, /Escalated/);
-  }
+test('two rejected reviews escalate with scoped unresolved evidence', async () => {
+  const r = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(undefined,
+    () => ({ accepted: false, issues: ['Approval unavailable.'], missing_evidence: ['approval record'] })) });
+  assert.equal(r.analysis, null); assert.equal(r.evidence_review.attempts, 2); assert.match(r.mode, /Escalated/);
+  assert.equal(r.evidence_requests[0].record, 'approval record'); assert.equal(r.evidence_requests[0].scope.shift_id, SCOPE.shift_id);
+  assert.ok(r.trace.some(x => x.stage === 'request_missing_evidence' && x.tools_exhausted === true));
 });
-test('missing wages produce a scoped evidence request and no model dollar explanation', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-missing-'));
+test('missing wages allow only the plan stage and retain an explicit dollar hold', async () => {
   let plans = 0;
-  const model = stubModel(async (_role, instruction) => {
-    assert.ok(instruction.startsWith('Plan'), 'Only a source plan may run when payroll dollars are absent');
-    plans++;
-    return { value: { source_order: ['labor', 'policy', 'sales'] } };
-  });
-  const result = await investigate({ liveModel: true, scenario: 'missing-wages' }, { model, memoryRoot });
-  assert.equal(plans, 1);
-  assert.equal(result.metrics, null);
-  assert.equal(result.analysis, null);
-  assert.equal(result.integration.nightshift_text, true, 'The source planning text returned even though the dollar conclusion is held');
-  assert.equal(result.evidence_review.status, 'blocked_by_missing_records');
-  assert.match(result.evidence_requests[0].record, /wage\/payroll/);
+  const model = stub(() => { throw Error('No explanation'); }, () => { throw Error('No critic'); }, () => { plans++; return ['labor', 'policy', 'sales']; });
+  const r = await investigate({ liveModel: true, scenario: 'missing-wages' }, { model, memoryRoot: await root() });
+  assert.equal(plans, 1); assert.equal(r.metrics, null); assert.equal(r.analysis, null);
+  assert.equal(r.integration.nightshift_text, true); assert.equal(r.evidence_review.status, 'blocked_by_missing_records');
+  assert.match(r.evidence_requests[0].record, /wage\/payroll/);
 });
-test('a Nightshift text failure cannot become an accepted conclusion', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-failure-'));
-  const model = stubModel(async (_role, instruction) => {
-    if (instruction.startsWith('Plan')) return { value: { source_order: ['sales', 'labor', 'policy'] } };
-    throw Object.assign(new Error('Runtime authorization expired'), { code: 'MODEL_UNAUTHORIZED' });
-  });
-  await assert.rejects(investigate({ liveModel: true }, { model, memoryRoot }), error => error.code === 'MODEL_UNAUTHORIZED');
+test('runtime authorization errors propagate without fallback', async () => {
+  await assert.rejects(investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(() => {
+    throw Object.assign(Error('expired'), { code: 'MODEL_UNAUTHORIZED' });
+  }) }), e => e.code === 'MODEL_UNAUTHORIZED');
 });
-test('a malformed approving critic response is held for review instead of accepted', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-malformed-'));
-  const model = stubModel(async (role, instruction) => ({ value: instruction.startsWith('Plan') ? { source_order: ['sales', 'labor', 'policy'] } : role === 'evidence_critic' ? { accepted: true, issues: [], missing_evidence: 'none' } : { claims: [{ text: 'The synthetic sales record is available.', source_ids: [salesId], metric_refs: [] }], next_check: 'Check approval.' } }));
-  const result = await investigate({ liveModel: true }, { model, memoryRoot });
-  assert.equal(result.analysis, null);
-  assert.equal(result.evidence_review.critic_response_valid, false);
-  assert.match(result.evidence_requests[0].record, /valid evidence critic response/);
+test('code renders exact bridge quantities and preserves the original raw choice', async () => {
+  let raw;
+  const r = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(packet => {
+    raw = selection(packet, ['metrics.gap_cents', 'bridge.labor_change_cents']); return structuredClone(raw);
+  }, packet => {
+    assert.deepEqual(packet.model_decision, raw); assert.match(packet.candidate.claims[0].text, /\$600\.00 above target/);
+    assert.match(packet.candidate.claims[0].text, /\+\$180\.00/); assert.deepEqual(packet.candidate.limitations, packet.deterministic_result.limitations); return approve;
+  }) });
+  assert.deepEqual(r.trace.find(x => x.stage === 'explanation').value, raw); assert.equal(raw.claims[0].text, undefined);
+  assert.notDeepEqual(r.analysis, raw); assert.deepEqual(r.analysis.limitations, r.limitations);
+  assert.match(r.analysis.claims[0].text, /cause remains unverified/); assert.equal(r.evidence_review.numeric_claims_valid, true);
 });
-test('recalled manager report remains unverified input and never replaces payroll', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-provenance-'));
-  const note = JSON.parse(await readFile(new URL('../seed/sources/manager_correction.json', import.meta.url))).records[0];
+test('an approving critic cannot admit freeform time/causal prose or unsupported action kinds', async () => {
+  for (const mutate of [
+    v => { v.claims[0].text = 'Labor time was above target due to additional labor costs.'; },
+    v => { v.next_check = 'Cut staff tomorrow; the report proves the cause.'; },
+    v => { v.claims[0].kind = 'verified_training_cause'; }, v => { v.next_check.kind = 'mark_paid'; }, v => { v.claims[0].metric_refs = []; }
+  ]) {
+    let critics = 0;
+    const r = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(packet => {
+      const v = selection(packet); mutate(v); return v;
+    }, () => { critics++; return approve; }) });
+    assert.equal(critics, 2); assert.equal(r.analysis, null); assert.equal(r.evidence_review.typed_decision_valid, false); assert.match(r.mode, /Escalated/);
+  }
+});
+test('generated numeric, unit, scope and source payloads are refused rather than copied or repaired', async () => {
+  for (const mutate of [
+    v => { v.claims[0].value = 90000; }, v => { v.claims[0].unit = 'USD_dollars'; },
+    v => { v.claims[0].scope = { restaurant_id: 'other' }; }, v => { v.claims[0].metric_refs = [{ key: 'metrics.gap_cents', value: 90000 }]; },
+    v => { v.claims[0].source_ids = ['invented']; }
+  ]) {
+    const r = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(packet => { const v = selection(packet); mutate(v); return v; }) });
+    assert.equal(r.analysis, null); assert.equal(r.metrics.gap_cents, 60000);
+    assert.ok(r.evidence_review.decision_issues.some(x => x.code === 'CLAIM_SCHEMA'));
+    assert.ok(r.trace.filter(x => x.role === 'fact_binding').every(x => x.claims.length === 0));
+  }
+});
+test('missing, duplicate and unknown limitation IDs cannot pass an approving critic', async () => {
+  for (const mutate of [ids => ids.slice(1), ids => [ids[0], ids[0], ids[2]], ids => [...ids.slice(0, -1), 'cause_proven']]) {
+    const r = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(packet => {
+      const v = selection(packet); v.limitation_ids = mutate(v.limitation_ids); return v;
+    }) });
+    assert.equal(r.analysis, null); assert.equal(r.evidence_review.limitations_bound, false);
+    assert.ok(r.evidence_review.decision_issues.some(x => x.code === 'LIMITATIONS_REQUIRED'));
+  }
+});
+test('remembered report checks require a scoped unverified report and never change payroll or infer its topic', async () => {
+  const memoryRoot = await root(), note = JSON.parse(await readFile(new URL('../seed/sources/manager_correction.json', import.meta.url))).records[0];
   await rememberCorrection(SCOPE, note, memoryRoot);
-  const model = stubModel(async (role, instruction, packet) => {
-    if (instruction.startsWith('Plan')) return { value: { source_order: ['labor', 'sales', 'policy'] } };
-    assert.equal(packet.manager_reports[0].classification, 'UNVERIFIED_MANAGER_REPORT');
-    assert.equal(packet.manager_reports[0].payroll_overridden, false);
-    assert.equal(packet.manager_reports[0].scope.shift_id, SCOPE.shift_id);
+  const r = await investigate({ liveModel: true }, { memoryRoot, model: stub(packet => {
+    assert.equal(packet.manager_reports[0].classification, 'UNVERIFIED_MANAGER_REPORT'); assert.equal(packet.manager_reports[0].payroll_overridden, false);
     assert.equal(packet.source_records.labor.actual_labor_cents, 396000);
-    assert.equal(packet.deterministic_result.metrics.gap_cents, 60000);
-    return { value: role === 'evidence_critic' ? { accepted: true, issues: [], missing_evidence: [] } : { claims: [{ text: 'The manager reports training; the statement remains unverified.', source_ids: [note.id], metric_refs: [] }], next_check: 'Verify training against the approval record.' } };
-  });
-  const result = await investigate({ liveModel: true }, { model, memoryRoot });
-  assert.ok(result.analysis);
-  assert.equal(result.metrics.actual_labor_cents, 396000);
-  assert.equal(result.corrections[0].note.classification, 'UNVERIFIED_MANAGER_REPORT');
+    return selection(packet, ['metrics.gap_cents'], { kind: 'verify_manager_report', report_ids: [note.id] });
+  }) });
+  assert.ok(r.analysis); assert.equal(r.metrics.actual_labor_cents, 396000); assert.deepEqual(r.analysis.next_check_report_ids, [note.id]);
+  assert.match(r.analysis.next_check, /report and cause remain unverified/); assert.doesNotMatch(r.analysis.next_check, /training/);
+  const absent = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(packet => selection(packet, ['metrics.gap_cents'], { kind: 'verify_manager_report', report_ids: [note.id] })) });
+  assert.equal(absent.analysis, null); assert.equal(absent.evidence_review.next_check_valid, false);
 });
-function metricReference(fact, changes = {}) {
-  return { key: fact.key, value: fact.value, unit: fact.unit, scope: { ...fact.scope }, ...changes };
-}
-function numericStub(candidate) {
-  return stubModel(async (role, instruction, packet) => ({ value: instruction.startsWith('Plan') ? { source_order: ['labor', 'sales', 'policy'] } : role === 'evidence_critic' ? { accepted: true, issues: [], missing_evidence: [] } : candidate(packet) }));
-}
-test('a wrong gap with valid source citations cannot pass an approving model critic', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-numeric-gap-'));
-  const model = numericStub(packet => {
-    const gap = packet.metric_catalog['metrics.gap_cents'];
-    assert.equal(gap.value, 60000);
-    return { claims: [{ text: 'The labor gap is reconciled.', source_ids: gap.source_ids, metric_refs: [metricReference(gap, { value: 90000 })] }], next_check: 'Verify approval.' };
-  });
-  const result = await investigate({ liveModel: true }, { model, memoryRoot });
-  assert.equal(result.analysis, null);
-  assert.equal(result.evidence_review.citations_valid, true);
-  assert.equal(result.evidence_review.numeric_claims_valid, false);
-  assert.ok(result.evidence_review.numeric_issues.some(issue => issue.code === 'METRIC_VALUE_MISMATCH'));
-  assert.equal(result.metrics.gap_cents, 60000);
-  assert.match(result.mode, /Escalated/);
+test('zero sales binds its extra limitation and cannot acquire an invented ratio', async () => {
+  const r = await investigate({ liveModel: true, scenario: 'zero-sales' }, { memoryRoot: await root(), model: stub() });
+  assert.ok(r.analysis); assert.ok(r.analysis.limitation_ids.includes('zero_sales_percentage_unavailable'));
+  assert.deepEqual(r.analysis.limitations, r.limitations);
+  const bad = await investigate({ liveModel: true, scenario: 'zero-sales' }, { memoryRoot: await root(), model: stub(packet => {
+    assert.equal(packet.metric_catalog['metrics.actual_labor_percent'].available, false);
+    return selection(packet, ['metrics.actual_labor_percent']);
+  }) });
+  assert.equal(bad.analysis, null); assert.ok(bad.evidence_review.numeric_issues.some(x => x.code === 'METRIC_UNAVAILABLE'));
 });
-test('exact structured gap and bridge values pass with their complete source coverage', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-numeric-valid-'));
-  const model = numericStub(packet => {
-    const facts = ['metrics.gap_cents', 'bridge.sales_denominator_effect_cents', 'bridge.labor_change_cents'].map(key => packet.metric_catalog[key]);
-    return { claims: facts.map(fact => ({ text: 'This component follows the deterministic reconciliation.', source_ids: fact.source_ids, metric_refs: [metricReference(fact)] })), next_check: 'Check approval and time records.' };
-  });
-  const result = await investigate({ liveModel: true }, { model, memoryRoot });
-  assert.equal(result.evidence_review.numeric_claims_valid, true);
-  assert.deepEqual(result.analysis.claims.map(claim => claim.metric_refs[0].value), [60000, 42000, 18000]);
-  assert.equal(result.integration.competition_ready, false);
-});
-test('metric units, scope, keys and source coverage are validated outside the critic', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-numeric-scope-'));
-  for (const [expectedCode, mutate] of [
-    ['METRIC_UNIT_MISMATCH', (fact) => metricReference(fact, { unit: 'USD_dollars' })],
-    ['METRIC_SCOPE_MISMATCH', (fact) => metricReference(fact, { scope: { ...SCOPE, restaurant_id: 'other-location' } })],
-    ['UNKNOWN_METRIC', (fact) => metricReference(fact, { key: 'metrics.recovered_savings_cents' })],
-    ['METRIC_SOURCE_COVERAGE', (fact) => metricReference(fact)]
-  ]) {
-    const model = numericStub(packet => {
-      const fact = packet.metric_catalog['metrics.gap_cents'];
-      return { claims: [{ text: 'The gap is reconciled.', source_ids: expectedCode === 'METRIC_SOURCE_COVERAGE' ? [salesId] : fact.source_ids, metric_refs: [mutate(fact)] }], next_check: 'Verify approval.' };
-    });
-    const result = await investigate({ liveModel: true }, { model, memoryRoot });
-    assert.equal(result.analysis, null, expectedCode);
-    assert.ok(result.evidence_review.numeric_issues.some(issue => issue.code === expectedCode), expectedCode);
+test('compact evidence packet retains actual source rows and every exact internal guard fact', async () => {
+  const original = await readFixture(); let packet;
+  const r = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(v => { packet = v; return selection(v); }) });
+  assert.deepEqual(packet.source_records, original.records); assert.deepEqual(packet.scope, SCOPE); assert.equal(packet.deterministic_result.metrics, undefined);
+  for (const [key, fact] of Object.entries(r.metric_catalog)) {
+    assert.deepEqual(packet.metric_catalog[key], { value: fact.value, unit: fact.unit, source_ids: fact.source_ids, available: fact.available }); assert.deepEqual(fact.scope, SCOPE);
   }
+  assert.deepEqual(packet.deterministic_result.bridge.map(row => packet.metric_catalog[row.metric_key].value), [0, 42000, 18000]);
 });
-test('unstructured quantities cannot override correct references or omit the required numeric schema', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-numeric-prose-'));
-  for (const [text, omitRefs, expectedCode] of [
-    ['The gap is $900.', false, 'QUANTITY_MUST_USE_METRIC_REF'],
-    ['The gap is nine hundred dollars.', false, 'QUANTITY_MUST_USE_METRIC_REF'],
-    ['The gap is reconciled.', true, 'METRIC_REFS_REQUIRED']
-  ]) {
-    const model = numericStub(packet => {
-      const fact = packet.metric_catalog['metrics.gap_cents'];
-      return { claims: [{ text, source_ids: fact.source_ids, ...(!omitRefs ? { metric_refs: [metricReference(fact)] } : {}) }], next_check: 'Verify approval.' };
-    });
-    const result = await investigate({ liveModel: true }, { model, memoryRoot });
-    assert.equal(result.analysis, null);
-    assert.ok(result.evidence_review.numeric_issues.some(issue => issue.code === expectedCode));
+test('invalid JSON retries through the model and never implies an uncalled critic rejection', async () => {
+  let explanations = 0, critics = 0;
+  const r = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(packet => {
+    if (++explanations === 1) throw Object.assign(Error('bad JSON'), { code: 'MODEL_INVALID_JSON', receipt: { request_id: 'bad-json', model_text_returned: true } });
+    assert.equal(packet.critic_feedback.model_error, 'MODEL_INVALID_JSON'); return selection(packet);
+  }, () => { critics++; return approve; }) });
+  assert.equal(explanations, 2); assert.equal(critics, 1); assert.equal(r.trace.find(x => x.request_id === 'bad-json').accepted, false); assert.ok(r.analysis);
+  const none = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(() => {
+    throw Object.assign(Error('bad JSON despite stop'), { code: 'MODEL_INVALID_JSON', receipt: { finish_reason: 'stop', model_text_returned: true } });
+  }, () => { throw Error('No critic'); }) });
+  assert.equal(none.analysis, null); assert.match(none.model_escalation, /model explanation was not accepted/); assert.doesNotMatch(none.model_escalation, /critic did not approve/);
+});
+test('malformed, negative, defective or truncated critic output cannot accept valid typed choices', async () => {
+  for (const review of [() => ({ accepted: true, issues: [], missing_evidence: 'none' }), () => ({ accepted: false, issues: [], missing_evidence: [] }),
+    () => ({ accepted: true, issues: ['irrelevant'], missing_evidence: [] }), () => ({ accepted: true, issues: [], missing_evidence: ['approval'] }),
+    () => { throw Object.assign(Error('truncated'), { code: 'MODEL_OUTPUT_TRUNCATED', receipt: { finish_reason: 'length', model_text_returned: true } }); }]) {
+    const r = await investigate({ liveModel: true }, { memoryRoot: await root(), model: stub(undefined, review) });
+    assert.equal(r.analysis, null); assert.match(r.mode, /Escalated/); assert.equal(r.evidence_review.attempts, 2);
   }
-});
-test('zero sales cannot acquire an invented labor percentage through a model reference', async () => {
-  const memoryRoot = await mkdtemp(path.join(tmpdir(), 'costproof-numeric-zero-'));
-  const model = numericStub(packet => {
-    const fact = packet.metric_catalog['metrics.actual_labor_percent'];
-    assert.equal(fact.available, false);
-    return { claims: [{ text: 'The labor percentage is available.', source_ids: fact.source_ids, metric_refs: [metricReference(fact, { value: 0 })] }], next_check: 'Review the sales record.' };
-  });
-  const result = await investigate({ liveModel: true, scenario: 'zero-sales' }, { model, memoryRoot });
-  assert.equal(result.metrics.actual_labor_percent, null);
-  assert.equal(result.analysis, null);
-  assert.ok(result.evidence_review.numeric_issues.some(issue => issue.code === 'METRIC_UNAVAILABLE'));
 });

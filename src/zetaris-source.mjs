@@ -1,7 +1,7 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Zetaris, ZetarisError, ZETARIS_COLUMNS } from './zetaris.mjs';
+import { Zetaris, ZetarisError, ZETARIS_COLUMNS, normalizeZetarisUiBase } from './zetaris.mjs';
 import { SCOPE } from './reconcile.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -42,25 +42,65 @@ async function loadMappingProof(file) {
     fail('ZETARIS_MAPPING_UNVERIFIED', 'A reviewed proof with matching tables and exact projected columns is required');
   return proof;
 }
+async function loadUiCredentials(file) {
+  if (typeof file !== 'string' || !file.trim() || file.length > 1024 || /[\0\r\n]/.test(file)) fail('ZETARIS_CONFIG_MISSING', 'Select the existing private Zetaris bundle environment file');
+  const checkedPath = (value) => {
+    const portable = value.replace(/\\/g, '/'), driveAbsolute = /^[A-Za-z]:\//.test(portable);
+    if (portable.startsWith('//') || (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(portable) && !driveAbsolute) ||
+        portable.slice(driveAbsolute ? 2 : 0).includes(':') || path.basename(value) !== '.env') fail('ZETARIS_CONFIG', 'UI login credentials require an explicitly selected local bundle .env file');
+    return path.resolve(ROOT, value);
+  };
+  let text;
+  try {
+    const resolved = await realpath(checkedPath(file)); checkedPath(resolved);
+    const details = await stat(resolved);
+    if (!details.isFile() || details.size > MAX_PROOF_BYTES) throw new Error();
+    const bytes = await readFile(resolved);
+    if (bytes.length > MAX_PROOF_BYTES) throw new Error();
+    text = bytes.toString('utf8');
+  } catch { fail('ZETARIS_CONFIG', 'The selected private bundle environment file is unavailable or invalid'); }
+  const values = {};
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\s*(?:export\s+)?(ZETARIS_ADMIN_EMAIL|ZETARIS_ADMIN_PASSWORD)\s*=\s*(.*)$/.exec(line);
+    if (!match) continue;
+    if (Object.hasOwn(values, match[1])) fail('ZETARIS_CONFIG', 'Private UI login configuration contains duplicate keys');
+    let value = match[2].trim();
+    if (value.startsWith('"') || value.startsWith("'")) {
+      if (value.length < 2 || value.at(-1) !== value[0]) fail('ZETARIS_CONFIG', 'Private UI login configuration has an incomplete value');
+      value = value.slice(1, -1);
+    }
+    values[match[1]] = value;
+  }
+  if (!values.ZETARIS_ADMIN_EMAIL || !values.ZETARIS_ADMIN_PASSWORD) fail('ZETARIS_CONFIG_MISSING', 'Private UI login configuration is incomplete');
+  return { username: values.ZETARIS_ADMIN_EMAIL, password: values.ZETARIS_ADMIN_PASSWORD };
+}
 function checkedOrder(order) {
   if (!Array.isArray(order) || order.length !== FAMILIES.length || new Set(order).size !== FAMILIES.length || order.some(family => !FAMILIES.includes(family)))
     fail('ZETARIS_QUERY_NOT_ALLOWED', 'Use each supported evidence family once');
   return [...order];
 }
 
-// Reads process configuration and ONE explicitly selected local mapping file.
-// It does not load .env, discover private files, create keys or contact Zetaris.
+// Reads process configuration and one explicitly selected local mapping proof.
+// UI proxy mode also reads the explicitly selected private bundle .env file;
+// it does not discover private files, create keys or contact Zetaris.
 export async function createConfiguredZetaris({ env = process.env, fetcher } = {}) {
   if (!env || typeof env !== 'object') fail('ZETARIS_CONFIG', 'Invalid Zetaris process configuration');
-  if (typeof env.ZETARIS_API_KEY !== 'string' || !env.ZETARIS_API_KEY.trim() ||
+  const apiTransport = env.ZETARIS_TRANSPORT || 'direct_rest';
+  if (!['direct_rest', 'ui_proxy'].includes(apiTransport)) fail('ZETARIS_CONFIG', 'Choose an explicit supported Zetaris transport');
+  if (apiTransport === 'direct_rest' && (typeof env.ZETARIS_API_KEY !== 'string' || !env.ZETARIS_API_KEY.trim() ||
       typeof env.ZETARIS_ORG_ID !== 'string' || !/^[1-9]\d{0,14}$/.test(env.ZETARIS_ORG_ID))
-    fail('ZETARIS_CONFIG_MISSING', 'Configure the user-created API key and actual numeric organization ID');
+    ) fail('ZETARIS_CONFIG_MISSING', 'Configure the user-created API key and actual numeric organization ID');
+  let credentials = {}, base = env.ZETARIS_BASE_URL || 'http://localhost:8888/api/v1.0';
+  if (apiTransport === 'ui_proxy') {
+    base = normalizeZetarisUiBase(env.ZETARIS_UI_BASE_URL);
+    credentials = await loadUiCredentials(env.ZETARIS_UI_AUTH_ENV_PATH);
+  }
   const proof = await loadMappingProof(env.ZETARIS_MAPPING_PROOF_PATH);
   const tables = Object.fromEntries(FAMILIES.map(family => [family, env['ZETARIS_TABLE_' + family.toUpperCase()] || proof.tables[family]]));
   if (FAMILIES.some(family => tables[family] !== proof.tables[family]))
     fail('ZETARIS_MAPPING_UNVERIFIED', 'Configured table identifiers do not match the reviewed mapping proof');
-  const client = new Zetaris({ base: env.ZETARIS_BASE_URL || 'http://localhost:8888/api/v1.0',
-    token: env.ZETARIS_API_KEY, orgId: env.ZETARIS_ORG_ID, tables, mappingProof: proof,
+  const client = new Zetaris({ base, apiTransport, ...credentials,
+    token: env.ZETARIS_API_KEY, orgId: env.ZETARIS_ORG_ID || (apiTransport === 'ui_proxy' ? null : undefined), tables, mappingProof: proof,
     ...(fetcher === undefined ? {} : { fetcher }) });
   if (!client.mappingVerified) fail('ZETARIS_MAPPING_UNVERIFIED', 'The adapter did not accept the mapping proof');
   return client;
@@ -88,16 +128,18 @@ export async function readZetaris(order = FAMILIES, options = {}) {
 export async function getZetarisStatus({ client, env = process.env } = {}) {
   try {
     const configured = checkClient(client || await createConfiguredZetaris({ env }));
-    return { provider: 'Zetaris REST', status: 'configured_unverified', configured: true,
+    return { provider: configured.apiTransport === 'ui_proxy' ? 'Zetaris UI proxy' : 'Zetaris REST', status: 'configured_unverified', configured: true,
+      api_transport: configured.apiTransport,
       mapping_proof_present: true, mapping_evidence_id: configured.mappingEvidenceId,
       query_verified: false, verified: false,
       message: 'Local configuration and reviewed mapping are present; a real scoped query is still required.' };
   } catch (error) {
     const mapping = error.code === 'ZETARIS_MAPPING_UNVERIFIED';
     const missing = error.code === 'ZETARIS_CONFIG_MISSING';
-    return { provider: 'Zetaris REST', status: mapping ? 'mapping_unverified' : missing ? 'not_configured' : 'configuration_error',
+    return { provider: env?.ZETARIS_TRANSPORT === 'ui_proxy' ? 'Zetaris UI proxy' : 'Zetaris REST', status: mapping ? 'mapping_unverified' : missing ? 'not_configured' : 'configuration_error',
       configured: false, mapping_proof_present: false, query_verified: false, verified: false,
       error: mapping ? 'ZETARIS_MAPPING_UNVERIFIED' : missing ? 'ZETARIS_CONFIG_MISSING' : 'ZETARIS_CONFIG',
-      message: mapping ? 'A reviewed local source mapping proof is required.' : missing ? 'Local API credentials and organization ID are not configured.' : 'Local Zetaris settings require review.' };
+      message: mapping ? 'A reviewed local source mapping proof is required.' : missing ?
+        (env?.ZETARIS_TRANSPORT === 'ui_proxy' ? 'The selected private UI login configuration is incomplete.' : 'Local API credentials and organization ID are not configured.') : 'Local Zetaris settings require review.' };
   }
 }

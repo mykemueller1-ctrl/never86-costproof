@@ -2,61 +2,19 @@ import { reconcile, SCOPE } from './reconcile.mjs';
 import { readFixture, readZetaris } from './sources.mjs';
 import { recallCorrections } from './memory.mjs';
 import { Nightshift } from './nightshift.mjs';
-function candidateIsCited(value, allowed) {
-  return Array.isArray(value?.claims) && value.claims.length > 0 && value.claims.length <= 8 &&
-    value.claims.every(c => c && typeof c.text === 'string' && c.text.trim().length > 0 && c.text.length <= 800 && Array.isArray(c.source_ids) && c.source_ids.length > 0 && new Set(c.source_ids).size === c.source_ids.length && c.source_ids.every(id => allowed.has(id))) &&
-    typeof value.next_check === 'string' && value.next_check.trim().length > 0 && value.next_check.length <= 1000;
-}
-const scopeKeys = ['restaurant_id', 'shift_id', 'business_date', 'currency'];
-// Quantities belong in typed references, never in generated prose. The prose
-// critic still reviews semantic support and attempts to imply quantities/causes.
-const quantityInProse = /\p{Number}|[$€£¥%]|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion|half|quarter|twice|double|triple)\b/iu;
-function metricCatalog(result, records) {
-  const { sales, labor, policy } = records;
-  const all = [sales.id, labor.id, policy.id];
-  const catalog = {};
-  const add = (key, value, unit, source_ids) => { catalog[key] = { key, value, unit, source_ids, scope: result.scope, available: typeof value === 'number' && Number.isFinite(value) }; };
-  for (const [name, unit, ids] of [
-    ['actual_sales_cents', 'USD_cents', [sales.id]],
-    ['actual_labor_cents', 'USD_cents', [labor.id]],
-    ['target_labor_cents', 'USD_cents', [sales.id, policy.id]],
-    ['target_percent', 'percent', [policy.id]],
-    ['actual_labor_percent', 'percent', [sales.id, labor.id]],
-    ['variance_percentage_points', 'percentage_points', all],
-    ['gap_cents', 'USD_cents', all]
-  ]) add('metrics.' + name, result.metrics[name], unit, ids);
-  for (const [i, name] of ['planned_variance_cents', 'sales_denominator_effect_cents', 'labor_change_cents'].entries()) {
-    add('bridge.' + name, result.bridge[i].cents, 'USD_cents', result.bridge[i].source_ids);
-  }
-  return catalog;
-}
-function validateNumericClaims(candidate, catalog) {
-  const issues = [];
-  if (!Array.isArray(candidate?.claims)) return { valid: false, issues: [{ code: 'CLAIMS_REQUIRED' }] };
-  const issue = (code, claim_index, key) => issues.push({ code, claim_index, ...(key ? { key } : {}) });
-  if (typeof candidate.next_check === 'string' && quantityInProse.test(candidate.next_check)) issue('QUANTITY_MUST_USE_METRIC_REF', 'next_check');
-  candidate.claims.forEach((claim, i) => {
-    if (typeof claim?.text === 'string' && quantityInProse.test(claim.text)) issue('QUANTITY_MUST_USE_METRIC_REF', i);
-    if (!Array.isArray(claim?.metric_refs) || claim.metric_refs.length > 8) { issue('METRIC_REFS_REQUIRED', i); return; }
-    const seen = new Set();
-    for (const ref of claim.metric_refs) {
-      const key = ref?.key;
-      if (!ref || typeof key !== 'string' || !Object.hasOwn(catalog, key)) { issue('UNKNOWN_METRIC', i); continue; }
-      if (Object.keys(ref).length !== 4 || Object.keys(ref).some(k => !['key', 'value', 'unit', 'scope'].includes(k))) issue('METRIC_REFERENCE_SCHEMA', i, key);
-      if (seen.has(key)) { issue('DUPLICATE_METRIC', i, key); continue; }
-      seen.add(key);
-      const expected = catalog[key];
-      if (!expected.available) issue('METRIC_UNAVAILABLE', i, key);
-      if (typeof ref.value !== 'number' || !Number.isFinite(ref.value) || !Object.is(ref.value, expected.value)) issue('METRIC_VALUE_MISMATCH', i, key);
-      if (ref.unit !== expected.unit) issue('METRIC_UNIT_MISMATCH', i, key);
-      if (!ref.scope || Object.keys(ref.scope).length !== scopeKeys.length || scopeKeys.some(k => ref.scope[k] !== expected.scope[k])) issue('METRIC_SCOPE_MISMATCH', i, key);
-      if (!Array.isArray(claim.source_ids) || expected.source_ids.some(id => !claim.source_ids.includes(id))) issue('METRIC_SOURCE_COVERAGE', i, key);
-    }
-  });
-  return { valid: issues.length === 0, issues };
-}
+import { metricCatalog, decisionContract, decisionOptions, evaluateDecision } from './decision.mjs';
+const boundedText = (maxLength) => ({ type: 'string', minLength: 1, maxLength });
+const strictObject = (properties) => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
+const planContract = { name: 'costproof_plan', maxTokens: 128, schema: strictObject({
+  source_order: { type: 'array', minItems: 3, maxItems: 3, items: { type: 'string', enum: ['sales', 'labor', 'policy'] } }
+}) };
+const criticContract = { name: 'costproof_evidence_review', maxTokens: 512, schema: strictObject({
+  accepted: { type: 'boolean' },
+  issues: { type: 'array', minItems: 0, maxItems: 12, items: boundedText(1000) },
+  missing_evidence: { type: 'array', minItems: 0, maxItems: 12, items: boundedText(1000) }
+}) };
 function validReview(value) {
-  return value && typeof value.accepted === 'boolean' &&
+  return value && Object.keys(value).length === 3 && ['accepted', 'issues', 'missing_evidence'].every(key => Object.hasOwn(value, key)) && typeof value.accepted === 'boolean' &&
     ['issues', 'missing_evidence'].every(key => Array.isArray(value[key]) && value[key].length <= 12 && value[key].every(item => typeof item === 'string' && item.trim().length > 0 && item.length <= 1000));
 }
 function evidenceRequests(items, origin) {
@@ -87,7 +45,7 @@ export async function investigate({ question = 'Why did dinner labor finish abov
     discovery = await model.discover();
     if (discovery.status !== 'online') throw Object.assign(new Error(discovery.status === 'unauthorized' ? 'Paste a valid Nightshift runtime token in local configuration.' : 'Nightshift is offline. Start the local runtime before using model mode.'), { code: 'NIGHTSHIFT_' + discovery.status.toUpperCase() });
     if (!discovery.models.includes(model.model)) throw new Error('Configured Nightshift route was not discovered');
-    const plan = await model.json('investigator', 'Plan read only evidence collection. Return {"source_order":["sales","labor","policy"],"reason":"..."}. All three families are needed, but choose their order based on the question. No other tools exist.', { question, scope: SCOPE, corrections: corrections.map(c => c.note), available_sources: order });
+    const plan = await model.json('investigator', 'Plan read only evidence collection. Return an object with only source_order, an array containing sales, labor and policy exactly once each. All families are required; choose their order based on the question. No causal explanation or other tools.', { question, scope: SCOPE, corrections: corrections.map(c => c.note), available_sources: order }, planContract);
     modelTextReturned = true;
     order = plan.value.source_order;
     if (!Array.isArray(order) || order.length !== 3 || new Set(order).size !== 3 || order.some(f => !['sales', 'labor', 'policy'].includes(f))) throw new Error('The model proposed an unsupported source plan');
@@ -102,45 +60,91 @@ export async function investigate({ question = 'Why did dinner labor finish abov
     analysis: null,
     evidence_requests: result.status === 'needs_evidence' ? evidenceRequests([result.request], 'deterministic_coverage_check') : [],
     evidence_review: { status: result.status === 'needs_evidence' ? 'blocked_by_missing_records' : 'not_requested', semantic_support: 'not_reviewed' },
-    proposed_action: { owner: 'Restaurant manager', status: 'unsent proposal', text: result.status === 'needs_evidence' ? result.request : corrections.length ? 'Verify the manager training report against approval and time records; compare the sales forecast before changing staffing.' : 'Compare the recorded labor hours with shift approval and time records, then check the sales forecast.' }
+    proposed_action: { owner: 'Restaurant manager', status: 'unsent proposal', text: result.status === 'needs_evidence' ? result.request : corrections.length ? 'Verify the remembered manager report against approval and time records; compare the sales forecast before changing staffing.' : 'Compare the recorded wage dollars with shift approval and time records, then check the sales forecast.' }
   };
   if (answer.evidence_requests.length) trace.push({ role: 'investigator', stage: 'request_missing_evidence', requests: answer.evidence_requests, conclusion_held: true });
   if (!liveModel || result.status !== 'reconciled') {
     answer.mode = liveModel ? 'Dollar conclusion held for missing evidence' : sourceMode === 'fixture' ? 'Deterministic synthetic preview' : 'Deterministic check over Zetaris sources';
     return answer;
   }
-  const allowed = new Set([...result.evidence.map(r => r.id), ...corrections.map(c => c.note.id)]);
   const catalog = metricCatalog(result, sources.records);
+  const options = decisionOptions(result, corrections), investigationContract = decisionContract(result, corrections);
   answer.metric_catalog = catalog;
-  const packet = { question, scope: SCOPE, deterministic_result: result, metric_catalog: catalog, source_records: sources.records, manager_reports: corrections.map(c => c.note) };
-  const example = catalog['metrics.gap_cents'];
-  const responseShape = { claims: [{ text: 'The gap follows the deterministic reconciliation.', source_ids: example.source_ids, metric_refs: [{ key: example.key, value: example.value, unit: example.unit, scope: example.scope }] }], next_check: 'Review the approval and time records.' };
+  // Source rows stay intact. Repeated derived values and scopes are sent once;
+  // the full internal catalog above still governs every accepted reference.
+  const bridgeKeys = ['planned_variance_cents', 'sales_denominator_effect_cents', 'labor_change_cents'];
+  const packet = { question, scope: SCOPE,
+    deterministic_result: { status: result.status, headline: result.headline, limitations: result.limitations,
+      bridge: result.bridge.map((row, i) => ({ label: row.label, metric_key: 'bridge.' + bridgeKeys[i] })) },
+    metric_catalog: Object.fromEntries(Object.entries(catalog).map(([key, { value, unit, source_ids, available }]) => [key, { value, unit, source_ids, available }])),
+    source_records: sources.records, manager_reports: corrections.map(c => c.note), decision_options: options };
+  const rejectInvalidModelOutput = (error, role, stage, attempt) => {
+    if (!['MODEL_INVALID_JSON', 'MODEL_OUTPUT_TRUNCATED', 'MODEL_SCHEMA_INVALID'].includes(error.code)) throw error;
+    trace.push({ role, stage, attempt, error: error.code, ...(error.receipt || {}), accepted: false });
+    if (error.receipt?.model_text_returned) answer.integration.nightshift_text = true;
+    answer.evidence_requests = evidenceRequests(['A complete valid ' + role + ' response is required before accepting the explanation.'], 'model_output_validation');
+    answer.evidence_review = { status: 'rejected', semantic_support: 'not_accepted', attempts: attempt, model_error: error.code };
+    return { model_error: error.code, instruction: 'The preceding model output was invalid or truncated. Return a short complete JSON object matching the requested schema; do not invent evidence.' };
+  };
   let feedback = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const investigation = await model.json('investigator', 'Explain the records without assigning an unsupported cause. Return a JSON object with this schema, choosing relevant supported claims: ' + JSON.stringify(responseShape) + '. Every claim requires metric_refs, empty for a qualitative claim. Copy numeric references only from available metric_catalog entries with exact key, value, unit and complete scope. Each reference contains exactly key, value, unit and scope. Cite every source listed for each referenced metric. Put all quantities in metric_refs; no digits, number words, money symbols or percent signs in text or next_check. Use only supplied source IDs. Manager reports remain unverified and cannot define numeric metrics. The deterministic dollar bridge is authoritative. Do not recommend a staffing cut or claim savings.', { ...packet, critic_feedback: feedback });
+    let investigation;
+    try {
+      investigation = await model.json('investigator', [
+        'Select a supported accounting fact and relevant next record check. Return exactly claims, limitation_ids and next_check; never write narrative text.',
+        'claims contains exactly one selector: {kind: metric_observation, metric_key: an available metric_catalog key} OR {kind: accounting_bridge, component_key: one bridge key}. Choose a fact relevant to the question using decision_options.claim_kinds. A bridge selector automatically includes the gap plus that component.',
+        'Never output values, units, scope, source_ids or metric_refs. Code binds all exact quantities and evidence from the validated catalog after your selection. Do not copy records, invent measurements, causes or savings, or return extra fields.',
+        'limitation_ids must contain every key from decision_options.required_limitations exactly once, no extras. Code will display all bound limitations and fixed wording; you are choosing typed facts, not authoring a narrative.',
+        'next_check has exactly kind and report_ids. Choose a kind from decision_options.next_check_options. verify_manager_report requires existing eligible report IDs; other kinds require an empty report_ids array. Manager statements remain unverified, never replace payroll and do not establish a training topic or cause. No staffing changes or completed actions.'
+      ].join(' '), { ...packet, critic_feedback: feedback }, investigationContract);
+    } catch (error) {
+      feedback = rejectInvalidModelOutput(error, 'investigator', 'explanation', attempt);
+      continue;
+    }
     trace.push({ role: 'investigator', stage: 'explanation', attempt, ...investigation });
-    const structurallyValid = candidateIsCited(investigation.value, allowed);
+    const decision = evaluateDecision(investigation.value, result, sources.records, corrections);
+    const structurallyValid = decision.citations_valid;
+    trace.push({ role: 'fact_binding', stage: 'catalog_resolution', attempt, binding: decision.reference_binding, claims: decision.resolved_claims,
+      selection_valid: decision.valid, note: 'These values, units, scope and sources are code-bound catalog facts, not generated or repaired model quantities.' });
     trace.push({ role: 'citation_guard', stage: 'source_id_validation', attempt, valid: structurallyValid, semantic_support: 'requires_evidence_critic', note: 'An allowed source ID proves a reference exists; it does not prove the claim follows from that source.' });
-    const numericValidation = validateNumericClaims(investigation.value, catalog);
-    trace.push({ role: 'numeric_guard', stage: 'deterministic_metric_validation', attempt, ...numericValidation, scope: SCOPE, note: 'Exact structured quantities and their source coverage are checked in code. Causal and qualitative support still require the evidence critic.' });
-    const review = await model.json('evidence_critic', 'Review the investigator against the exact supplied records and math. Reject unsupported numerical claims, causal claims, uncited claims, savings or treating a manager report as verified. Numeric facts must use the exact metric catalog; quantity-bearing prose is invalid. Review the semantic connection between the prose, metric references and cited records even if the deterministic guard passed. Return {"accepted":true or false,"issues":["..."],"missing_evidence":["..."]}. Accept only when every claim is supported and all limitations are preserved.', { ...packet, candidate: investigation.value, numeric_validation: numericValidation });
+    const numericValidation = decision.numeric_validation;
+    trace.push({ role: 'numeric_guard', stage: 'deterministic_metric_validation', attempt, ...numericValidation, scope: SCOPE, note: 'Code-bound quantities, units, scope and source coverage are checked by the exact numeric guard. Selection relevance still requires the evidence critic.' });
+    trace.push({ role: 'decision_guard', stage: 'typed_decision_validation', attempt, valid: decision.valid, issues: decision.issues,
+      limitation_ids_valid: decision.limitation_ids_valid, next_check_valid: decision.next_check_valid,
+      rendering: decision.analysis?.rendering || null, note: 'Raw model selection is unchanged in its trace. Only validated closed selections can reach canonical code-rendered text.' });
+    let review;
+    try {
+      review = await model.json('evidence_critic', [
+        'Review the raw fact-ID model_decision and canonical code-bound candidate against the question, exact records and metric_catalog. References, values, units, scope and source IDs are resolved by code, not generated by the model. The model selects facts/checks; code renders fixed wording.',
+        'Reject if decision_validation or numeric_validation is invalid, the candidate is null, selections are irrelevant, sources fail to support a selected metric, a required limitation is missing, or the next check is not eligible for this context. An approving review cannot override code guards.',
+        'The candidate must preserve every deterministic limitation: synthetic data, accounting rather than cause or recovered savings, and straight time wage exclusions. Manager report references must remain unverified and must not replace payroll. Do not infer a topic such as training from an arbitrary report.',
+        'A supported accounting observation does not require causal proof when cause remains unverified. A proposed future record check is not a claim that its cause is proven. Do not approve staffing cuts, paid/completed actions or missing records as facts.',
+        'Return exactly accepted (boolean), issues (array of specific defects), and missing_evidence (array of concrete records required to support a claimed conclusion). Empty arrays mean no defects or missing support for the claims actually made; a proposed future cause check is not itself a causal claim. Accept only if every claim and limitation is supported. Keep the review short.'
+      ].join(' '), { ...packet, model_decision: investigation.value, candidate: decision.analysis,
+        decision_validation: { valid: decision.valid, issues: decision.issues, limitation_ids_valid: decision.limitation_ids_valid, next_check_valid: decision.next_check_valid }, numeric_validation: numericValidation }, criticContract);
+    } catch (error) {
+      feedback = rejectInvalidModelOutput(error, 'evidence_critic', 'review', attempt);
+      continue;
+    }
     trace.push({ role: 'evidence_critic', stage: 'review', attempt, ...review });
     answer.integration.nightshift_text = true;
     const reviewValid = validReview(review.value);
-    if (structurallyValid && numericValidation.valid && reviewValid && review.value.accepted === true && review.value.issues.length === 0 && review.value.missing_evidence.length === 0) {
-      answer.analysis = investigation.value;
+    if (decision.valid && reviewValid && review.value.accepted === true && review.value.issues.length === 0 && review.value.missing_evidence.length === 0) {
+      answer.analysis = decision.analysis;
       answer.mode = 'Nightshift investigation with evidence critique';
       answer.evidence_requests = [];
-      answer.evidence_review = { status: 'accepted_by_model_critic', semantic_support: 'model_reviewed_not_independent_verification', numeric_claims_valid: true, attempts: attempt };
-      answer.proposed_action.text = investigation.value.next_check;
+      answer.evidence_review = { status: 'accepted_by_model_critic', semantic_support: 'model_reviewed_not_independent_verification', numeric_claims_valid: true,
+        typed_decision_valid: true, references_bound: true, limitations_bound: true, attempts: attempt };
+      answer.proposed_action.text = decision.analysis.next_check;
       return answer;
     }
     answer.evidence_requests = evidenceRequests(reviewValid ? review.value.missing_evidence : ['A valid evidence critic response is required before accepting the explanation.'], 'evidence_critic');
-    answer.evidence_review = { status: 'rejected', semantic_support: 'not_accepted', attempts: attempt, critic_response_valid: reviewValid, citations_valid: structurallyValid, numeric_claims_valid: numericValidation.valid, numeric_issues: numericValidation.issues };
+    answer.evidence_review = { status: 'rejected', semantic_support: 'not_accepted', attempts: attempt, critic_response_valid: reviewValid, citations_valid: structurallyValid, numeric_claims_valid: numericValidation.valid, numeric_issues: numericValidation.issues,
+      typed_decision_valid: decision.valid, decision_issues: decision.issues, limitations_bound: decision.limitation_ids_valid, next_check_valid: decision.next_check_valid };
     if (answer.evidence_requests.length) trace.push({ role: 'investigator', stage: 'request_missing_evidence', attempt, requests: answer.evidence_requests, tools_exhausted: true, note: 'All three available source families were read. No missing external record was fetched or invented.' });
-    feedback = { structural_citations_valid: structurallyValid, numeric_validation: numericValidation, critic_response_valid: reviewValid, review: review.value, evidence_requests: answer.evidence_requests, instruction: 'Revise to supported conclusions from available records and exact metric references, or preserve the evidence request. A requested record has not been fetched.' };
+    feedback = { structural_citations_valid: structurallyValid, numeric_validation: numericValidation, decision_validation: { valid: decision.valid, issues: decision.issues }, critic_response_valid: reviewValid, review: review.value, evidence_requests: answer.evidence_requests, instruction: 'Revise only the typed selections to supported available metrics and eligible checks, with all limitation IDs. A requested record has not been fetched. No freeform narrative is permitted.' };
   }
   answer.mode = 'Escalated after two investigation attempts';
-  answer.model_escalation = 'The evidence critic did not approve the explanation. Review the source records; no model conclusion was accepted.';
+  answer.model_escalation = 'The model explanation was not accepted. Review validation failures and any evidence critique in the run trace before drawing a conclusion.';
   return answer;
 }

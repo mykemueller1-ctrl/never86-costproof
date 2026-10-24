@@ -3,6 +3,41 @@ const money = cents => new Intl.NumberFormat('en-US', { style: 'currency', curre
 const signedMoney = cents => (cents > 0 ? '+' : '') + money(cents);
 const percent = value => value === null ? 'Unavailable' : value.toFixed(1) + '%';
 const set = (id, value) => { $(id).textContent = value; };
+let zetarisConnectionText = null;
+let zetarisConfigurationMessage = 'Source queries for the current investigation are unverified.';
+let nightshiftConnectionText = null;
+let nightshiftConfigurationMessage = 'Model text for the current investigation is unverified.';
+function updateZetarisConnection(result) {
+  if (nightshiftConnectionText) {
+    const calls = (result?.trace || []).filter(row => row.model_text_returned);
+    const nano = calls.length >= 3 && calls.every(row => row.winning_provider === 'local-runtime' &&
+      row.routed_model === 'local-runtime/nvidia-llama-3-1-nemotron-nano-4b-v1-1-q4-k-m' &&
+      typeof row.request_id === 'string' && row.request_id.startsWith('chatcmpl-'));
+    const accepted = result?.evidence_review?.status === 'accepted_by_model_critic' &&
+      result.analysis?.rendering === 'code_from_validated_model_selection';
+    nightshiftConnectionText.textContent = result?.integration?.nightshift_text === true
+      ? accepted && nano ? 'Verified for this run · local Nano · evidence selection and critic'
+        : 'Model text returned for this run · answer held for validation'
+      : nightshiftConfigurationMessage;
+  }
+  if (!zetarisConnectionText) return;
+  const families = ['sales', 'labor', 'policy'];
+  const receipts = (result?.trace || []).filter(row => row.role === 'source');
+  const verified = $('source-mode').value === 'zetaris' && result?.source_mode === 'zetaris' &&
+    result.integration?.zetaris === true && receipts.length === families.length && families.every(family => {
+      const rows = receipts.filter(row => row.family === family);
+      const row = rows[0];
+      return rows.length === 1 && row.tool === 'zetaris_rest_sql' && row.status === 'validated' &&
+        row.http_status === 200 && row.transport === 'network' && row.transport_verified === true &&
+        row.mapping_verified === true && row.integration_verified === true &&
+        ['direct_rest', 'ui_proxy'].includes(row.api_transport) && typeof row.source_id === 'string' &&
+        row.source_id === result.source_records?.[family]?.id &&
+        ['restaurant_id', 'shift_id', 'business_date', 'currency'].every(key => typeof result.scope?.[key] === 'string' && result.scope[key] && row.scope?.[key] === result.scope[key]);
+    });
+  zetarisConnectionText.textContent = verified
+    ? 'Verified for this run · 3 scoped network queries · synthetic sources'
+    : zetarisConfigurationMessage;
+}
 async function request(url, body) {
   const response = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
   const value = await response.json();
@@ -129,6 +164,9 @@ function display(result) {
   set('context-explanation', result.status === 'needs_evidence' ? 'The wage record is still required. Remembered context cannot fill missing dollars. The statement remains unverified.' : 'The report changes the next check. Labor dollars still come from the source records. The statement remains unverified.');
   $('report-provenance').replaceChildren(...corrections.map(row => reportCard(row)));
   $('model-analysis').replaceChildren();
+  if (result.analysis?.rendering === 'code_from_validated_model_selection') {
+    $('model-analysis').append(element('p', 'Nightshift selected fact identifiers and a proposed check. The app binds the quantities and source records, then renders their wording from validated records.', 'quiet'));
+  }
   for (const claim of result.analysis?.claims || []) {
     const p = element('p', claim.text);
     for (const ref of claim.metric_refs || []) {
@@ -138,18 +176,24 @@ function display(result) {
     }
     p.append(element('code', claim.source_ids.join(' · '))); $('model-analysis').append(p);
   }
+  const boundaries = element('div', '', 'source-boundaries');
+  boundaries.append(element('p', 'SCOPE AND LIMITATIONS', 'eyebrow'));
+  const limitations = element('ul', '', 'quiet');
+  for (const limitation of result.limitations || []) limitations.append(element('li', limitation));
+  boundaries.append(limitations); $('model-analysis').append(boundaries);
   $('escalation').hidden = !result.model_escalation; set('escalation', result.model_escalation || '');
 }
 async function run(event) {
   event?.preventDefault(); $('error').hidden = true; $('loading').hidden = false; $('run').disabled = true;
   for (const id of ['source-mode', 'scenario', 'mode', 'question']) $(id).disabled = true;
   $('result').hidden = true;
+  updateZetarisConnection();
   clearMetricReceipt('A new investigation is reading the records. Receipts from earlier runs have been cleared.');
   try {
     const result = await request('/api/investigate', { question: $('question').value, scenario: $('scenario').value, liveModel: $('mode').value === 'nightshift', sourceMode: $('source-mode').value });
-    display(result); await refreshMemory();
+    display(result); await refreshMemory(); updateZetarisConnection(result);
     if (event) $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (error) { $('result').hidden = true; clearMetricReceipt('No metric receipt is available because this investigation did not finish.'); set('error', error.message); $('error').hidden = false; }
+  } catch (error) { updateZetarisConnection(); $('result').hidden = true; clearMetricReceipt('No metric receipt is available because this investigation did not finish.'); set('error', error.message); $('error').hidden = false; }
   finally {
     $('loading').hidden = true; $('run').disabled = false;
     for (const id of ['source-mode', 'mode', 'question']) $(id).disabled = false;
@@ -159,12 +203,15 @@ async function run(event) {
 $('investigation-form').addEventListener('submit', run);
 $('source-mode').addEventListener('change', () => {
   const registered = $('source-mode').value === 'zetaris';
+  updateZetarisConnection();
   $('result').hidden = true; $('error').hidden = true;
   clearMetricReceipt('Choose Run to read the selected source. Earlier receipts have been cleared.');
   if (registered) $('scenario').value = 'complete';
   $('scenario').disabled = registered;
   set('source-note', registered ? 'Reads registered synthetic sources through Zetaris. Verified source mapping is required. No fixture fallback.' : 'Preview reads labeled local source files. Fault scenarios alter fixtures only. Live sponsor calls remain separately identified.');
 });
+for (const id of ['scenario', 'mode', 'question']) $(id).addEventListener('change', () => updateZetarisConnection());
+$('question').addEventListener('input', () => updateZetarisConnection());
 $('reviewed').addEventListener('change', () => { $('save-note').disabled = !$('reviewed').checked; });
 $('save-note').addEventListener('click', async () => {
   $('save-note').disabled = true;
@@ -179,7 +226,11 @@ async function startup() {
   try {
     const status = await request('/api/status');
     for (const [name, text] of [ ['Meterless H-MEM', status.hmem], ['Nightshift primary provider', status.nightshift.status === 'unauthorized' ? 'Runtime token required · text call unverified' : status.nightshift.status + ' · text call unverified'], ['Zetaris source queries', status.zetaris.message] ]) {
-      const card = element('div', '', 'connection'); card.append(element('strong', name), element('span', text)); $('connections').append(card);
+      const card = element('div', '', 'connection');
+      const detail = element('span', text);
+      if (name === 'Zetaris source queries') { zetarisConnectionText = detail; zetarisConfigurationMessage = text; }
+      if (name === 'Nightshift primary provider') { nightshiftConnectionText = detail; nightshiftConfigurationMessage = text; }
+      card.append(element('strong', name), detail); $('connections').append(card);
     }
     await refreshMemory(); await run();
   } catch (error) { set('error', error.message); $('error').hidden = false; }

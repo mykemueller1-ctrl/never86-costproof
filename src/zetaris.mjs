@@ -7,6 +7,7 @@ import { validateRecord } from './reconcile.mjs';
 // therefore a candidate mapping until a real DESCRIBE/query/source comparison
 // is recorded. This module never creates objects, keys, or credentials.
 export const ZETARIS_REQUEST_REFERENCE = 'https://github.com/zetaris/getting-started/blob/main/scripts/zetaris_sql.py';
+export const ZETARIS_UI_REFERENCE = 'research/zetaris-live-probe-2026-10-23/2026-10-23T20-52-52-395Z-f536009e/receipt.private.json';
 const COMMON = ['id', 'classification', 'currency', 'restaurant_id', 'shift_id', 'business_date'];
 export const ZETARIS_COLUMNS = Object.freeze({
   sales: Object.freeze([...COMMON, 'planned_net_sales_cents', 'actual_net_sales_cents']),
@@ -55,6 +56,37 @@ export function normalizeZetarisBase(input = 'http://localhost:8888/api/v1.0') {
       !['/api/v1.0', '/api/v1.0/'].includes(url.pathname))
     fail('ZETARIS_CONFIG', 'This local build requires a loopback REST base ending in /api/v1.0');
   return url.href.replace(/\/$/, '');
+}
+export function normalizeZetarisUiBase(input = 'http://127.0.0.1:3000') {
+  let url;
+  try { url = new URL(input); } catch { fail('ZETARIS_CONFIG', 'Invalid Zetaris UI origin'); }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash ||
+      !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || !['', '/'].includes(url.pathname))
+    fail('ZETARIS_CONFIG', 'UI proxy mode requires a plain loopback UI origin');
+  return url.origin;
+}
+function numericOrg(value) {
+  return ((typeof value === 'number' && Number.isSafeInteger(value)) || typeof value === 'string') && /^[1-9]\d{0,14}$/.test(String(value)) ? String(value) : null;
+}
+async function boundedDocument(response, receipt, auth = false) {
+  try {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > (auth ? 65536 : MAX_RESPONSE_BYTES)) throw new Error();
+    return JSON.parse(text);
+  } catch { receipt.status = 'schema_failure'; fail('ZETARIS_SCHEMA', auth ? 'Zetaris login returned invalid or oversized JSON' : 'Zetaris returned invalid or oversized JSON', receipt); }
+}
+function uiRows(document, columns, pageLimit, receipt) {
+  if (!document || typeof document !== 'object' || Array.isArray(document) || !Array.isArray(document.records) ||
+      document.success === false || document.error || document.pageNumber !== 1 || document.pageLimit !== pageLimit ||
+      document.totalPages !== 1 || !Number.isSafeInteger(document.totalCount) || document.totalCount < 0 ||
+      document.totalCount !== document.records.length || document.totalCount > pageLimit)
+    fail('ZETARIS_SCHEMA', 'UI proxy result must be a complete verified single page', receipt);
+  return document.records.map(record => {
+    if (!record || typeof record !== 'object' || Array.isArray(record) || Object.keys(record).length !== columns.length ||
+        columns.some(key => !Object.hasOwn(record, key)) || Object.keys(record).some(key => !columns.includes(key)))
+      fail('ZETARIS_SCHEMA', 'UI proxy columns do not match the explicit projection', receipt);
+    return columns.map(key => record[key]);
+  });
 }
 export function buildScopedQuery(family, scope, tables) {
   familyName(family);
@@ -124,34 +156,71 @@ function validMappingProof(proof, tables) {
 }
 
 export class Zetaris {
-  #token; #fetcher; #networkTransport;
+  #token; #fetcher; #networkTransport; #username; #password; #session = null;
   constructor({ base = process.env.ZETARIS_REST_URL, token = process.env.ZETARIS_API_KEY,
-    orgId = process.env.ZETARIS_ORG_ID, tables = {}, mappingProof = null, fetcher = globalThis.fetch, timeoutMs = 30000 } = {}) {
-    this.base = normalizeZetarisBase(base);
-    if (orgId !== undefined && !/^[1-9]\d{0,14}$/.test(String(orgId))) fail('ZETARIS_CONFIG', 'Use the actual positive numeric organization ID');
-    if (token !== undefined && (typeof token !== 'string' || !token.trim() || /[\r\n]/.test(token))) fail('ZETARIS_CONFIG', 'Invalid local Zetaris key configuration');
+    orgId = process.env.ZETARIS_ORG_ID, apiTransport = 'direct_rest', username, password,
+    tables = {}, mappingProof = null, fetcher = globalThis.fetch, timeoutMs = 30000 } = {}) {
+    if (!['direct_rest', 'ui_proxy'].includes(apiTransport)) fail('ZETARIS_CONFIG', 'Choose an explicit supported Zetaris transport');
+    this.apiTransport = apiTransport;
+    this.base = apiTransport === 'direct_rest' ? normalizeZetarisBase(base) : normalizeZetarisUiBase(base);
+    const configuredOrg = apiTransport === 'ui_proxy' && (orgId === null || orgId === '') ? undefined : orgId;
+    if (configuredOrg !== undefined && !numericOrg(configuredOrg)) fail('ZETARIS_CONFIG', 'Use the actual positive numeric organization ID');
+    if (apiTransport === 'direct_rest' && token !== undefined && (typeof token !== 'string' || !token.trim() || /[\r\n]/.test(token))) fail('ZETARIS_CONFIG', 'Invalid local Zetaris key configuration');
     if (typeof fetcher !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 180000) fail('ZETARIS_CONFIG', 'Invalid request transport or timeout');
-    this.orgId = orgId === undefined ? null : String(orgId);
+    if (apiTransport === 'ui_proxy' && ([username, password].some(value => typeof value !== 'string' || !value.trim() || value.length > 4096 || /[\r\n\0]/.test(value)))) fail('ZETARIS_CONFIG', 'Configure ordinary UI login credentials privately');
+    this.orgId = configuredOrg === undefined ? null : String(configuredOrg);
     this.tables = Object.freeze(Object.fromEntries(FAMILIES.filter(family => tables[family] !== undefined).map(family => [family, qualifiedName(tables[family])])));
     this.mappingVerified = Boolean(validMappingProof(mappingProof, this.tables));
     this.mappingEvidenceId = this.mappingVerified ? mappingProof.evidence_id : null;
     this.timeoutMs = timeoutMs;
-    this.#token = token; this.#fetcher = fetcher; this.#networkTransport = fetcher === globalThis.fetch;
+    this.#token = apiTransport === 'direct_rest' ? token : undefined;
+    this.#username = username; this.#password = password;
+    this.#fetcher = fetcher; this.#networkTransport = fetcher === globalThis.fetch;
     Object.freeze(this);
+  }
+  async #authorize(receipt) {
+    if (this.apiTransport === 'direct_rest') {
+      if (!this.#token || !this.orgId) fail('ZETARIS_UNAUTHORIZED', 'Configure the user-created local API key and actual organization ID before querying');
+      return { token: this.#token, orgId: this.orgId };
+    }
+    if (this.#session) { receipt.auth = { ...this.#session.receipt, reused: true }; return this.#session; }
+    const auth = { mode: 'ordinary_login', endpoint: this.base + '/api/auth/login', request_id: randomUUID(),
+      requested_at_utc: new Date().toISOString(), http_status: null, token_persisted: false, reused: false };
+    receipt.auth = auth;
+    let response;
+    try {
+      response = await this.#fetcher(auth.endpoint, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(this.timeoutMs),
+        headers: { 'Content-Type': 'application/json', 'X-Request-ID': auth.request_id },
+        body: JSON.stringify({ username: this.#username, password: this.#password }) });
+    } catch (error) { receipt.status = 'offline'; fail(error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'ZETARIS_TIMEOUT' : 'ZETARIS_OFFLINE', 'Zetaris login did not complete', receipt); }
+    auth.http_status = response.status;
+    if ([401, 403].includes(response.status)) { receipt.status = 'unauthorized'; fail('ZETARIS_UNAUTHORIZED', 'Zetaris ordinary login was rejected', receipt); }
+    if (response.status >= 500 || [408, 429].includes(response.status)) { receipt.status = 'offline'; fail('ZETARIS_OFFLINE', 'Zetaris login service is unavailable', receipt); }
+    if (!response.ok || response.redirected) { receipt.status = 'unauthorized'; fail('ZETARIS_UNAUTHORIZED', 'Zetaris ordinary login was not accepted at the configured origin', receipt); }
+    const login = await boundedDocument(response, receipt, true);
+    const orgId = numericOrg(login?.orgId), token = login?.idToken;
+    if (!login || typeof login !== 'object' || Array.isArray(login) || login.error || login.success === false || !orgId ||
+        typeof token !== 'string' || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token) ||
+        (this.orgId !== null && this.orgId !== orgId)) {
+      receipt.status = 'schema_failure'; fail('ZETARIS_SCHEMA', 'Zetaris login requires a valid session token and matching numeric organization ID', receipt);
+    }
+    auth.org_id = orgId; auth.completed_at_utc = new Date().toISOString();
+    this.#session = { token, orgId, receipt: { ...auth } }; // Process memory only; refreshToken is never retained.
+    return this.#session;
   }
   async execute(action) {
     // This API accepts named operations only. It never accepts caller SQL.
     if (!action || typeof action !== 'object' || Array.isArray(action) || 'sql' in action)
       fail('ZETARIS_QUERY_NOT_ALLOWED', 'Only named read-only operations are allowed');
     let sql, scope = null;
-    if (action.kind === 'probe') sql = 'SELECT 1';
+    if (this.apiTransport === 'ui_proxy' && !['probe', 'evidence'].includes(action.kind)) fail('ZETARIS_QUERY_NOT_ALLOWED', 'UI proxy metadata projections require separate live verification');
+    if (action.kind === 'probe') sql = this.apiTransport === 'ui_proxy' ? 'SELECT 1 AS costproof_probe' : 'SELECT 1';
     else if (action.kind === 'list_databases') sql = 'SHOW LIGHTNING DATABASES';
     else if (action.kind === 'describe') sql = 'DESCRIBE DATASOURCE TABLE ' + qualifiedName(this.tables[familyName(action.family)]);
     else if (action.kind === 'evidence') { scope = scopeCopy(action.scope); sql = buildScopedQuery(action.family, scope, this.tables); }
     else fail('ZETARIS_QUERY_NOT_ALLOWED', 'Unsupported read-only operation');
-    if (!this.#token || !this.orgId) fail('ZETARIS_UNAUTHORIZED', 'Configure the user-created local API key and actual organization ID before querying');
     const queryId = randomUUID(), requestId = randomUUID();
-    const receipt = { tool: 'zetaris_rest_sql', endpoint: this.base + '/sql-editor/sqls/run',
+    const receipt = { tool: 'zetaris_rest_sql', endpoint: this.base + (this.apiTransport === 'direct_rest' ? '/sql-editor/sqls/run' : '/api/proxy/query/sql/start'), api_transport: this.apiTransport,
       query_id: queryId, request_id: requestId, sql, scope, family: action.family || null,
       requested_at_utc: new Date().toISOString(), status: 'pending', http_status: null,
       transport: this.#networkTransport ? 'network' : 'injected_test_transport', transport_verified: false,
@@ -159,26 +228,32 @@ export class Zetaris {
       integration_verified: false, row_count: null };
     const started = performance.now();
     try {
+      const authorization = await this.#authorize(receipt);
+      if (this.apiTransport === 'ui_proxy') { receipt.org_id = authorization.orgId; receipt.query_id_source = 'client_correlation_only'; }
+      const limit = this.apiTransport === 'ui_proxy' ? 5 : action.kind === 'evidence' ? 2 : 100;
       let response;
       try {
         response = await this.#fetcher(receipt.endpoint, { method: 'POST', redirect: 'error',
           signal: AbortSignal.timeout(this.timeoutMs),
-          headers: { Authorization: 'Bearer ' + this.#token, 'X-Org-ID': this.orgId, 'X-Request-ID': requestId, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ queryId, sql, source: 'SqlEditor', limit: action.kind === 'evidence' ? 2 : 100 }) });
+          headers: { Authorization: 'Bearer ' + authorization.token, 'X-Org-ID': authorization.orgId, 'X-Request-ID': requestId, 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.apiTransport === 'ui_proxy' ? { select: sql, pageLimit: limit } : { queryId, sql, source: 'SqlEditor', limit }) });
       } catch (error) {
         receipt.status = 'offline';
         fail(error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'ZETARIS_TIMEOUT' : 'ZETARIS_OFFLINE', 'Zetaris request did not complete; no fixture fallback was used', receipt);
       }
       receipt.http_status = response.status;
-      if ([401, 403].includes(response.status)) { receipt.status = 'unauthorized'; fail('ZETARIS_UNAUTHORIZED', 'Zetaris authorization was rejected', receipt); }
+      if ([401, 403].includes(response.status)) { this.#session = null; receipt.status = 'unauthorized'; fail('ZETARIS_UNAUTHORIZED', 'Zetaris authorization was rejected', receipt); }
       if (response.status >= 500 || [408, 429].includes(response.status)) { receipt.status = 'offline'; fail('ZETARIS_OFFLINE', 'Zetaris service is unavailable or rate limited', receipt); }
-      if (!response.ok) { receipt.status = 'schema_failure'; fail('ZETARIS_REQUEST_REJECTED', 'Zetaris rejected the documented read request; verify the running API and configuration', receipt); }
-      let document;
-      try {
-        const text = await response.text();
-        if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) throw new Error('Response too large');
-        document = JSON.parse(text);
-      } catch { receipt.status = 'schema_failure'; fail('ZETARIS_SCHEMA', 'Zetaris returned invalid or oversized JSON', receipt); }
+      if (!response.ok || response.redirected) { receipt.status = 'schema_failure'; fail('ZETARIS_REQUEST_REJECTED', 'Zetaris rejected the documented read request; verify the running API and configuration', receipt); }
+      const document = await boundedDocument(response, receipt);
+      if (this.apiTransport === 'ui_proxy') {
+        let rows;
+        try { rows = uiRows(document, action.kind === 'evidence' ? ZETARIS_COLUMNS[action.family] : ['costproof_probe'], limit, receipt); }
+        catch (error) { receipt.status = 'schema_failure'; throw error; }
+        receipt.pagination = { page_number: document.pageNumber, page_limit: document.pageLimit, total_count: document.totalCount, total_pages: document.totalPages };
+        receipt.row_count = rows.length; receipt.transport_verified = this.#networkTransport; receipt.status = 'received';
+        return { rows, receipt };
+      }
       if (!document || typeof document !== 'object' || Array.isArray(document) || !Array.isArray(document.data) ||
           document.data.some(row => !Array.isArray(row)) || document.data.length > 100 || document.success === false || document.error) {
         receipt.status = 'schema_failure'; fail('ZETARIS_SCHEMA', 'Unexpected Zetaris positional-row response; inspect the running API schema', receipt);
@@ -212,6 +287,6 @@ export class Zetaris {
       records[family] = out.record;
       trace.push({ role: 'source', ...out.receipt });
     }
-    return { records, trace, provider: 'Zetaris REST', zetaris_verified: trace.every(receipt => receipt.integration_verified) };
+    return { records, trace, provider: this.apiTransport === 'ui_proxy' ? 'Zetaris UI proxy' : 'Zetaris REST', zetaris_verified: trace.every(receipt => receipt.integration_verified) };
   }
 }

@@ -99,3 +99,46 @@ test('live source error propagates and cannot silently return the deterministic 
   assert.equal((await readFixture()).zetaris_verified, false);
   assert.throws(() => requireZetaris(), error => error.code === 'ZETARIS_NOT_VERIFIED');
 });
+
+test('explicit UI configuration reads only the selected private bundle file and status makes no login request', async t => {
+  const file = await proofFile(t);
+  const authDir = await mkdtemp(path.join(tmpdir(), 'costproof-ui-auth-test-'));
+  const authFile = path.join(authDir, '.env');
+  await writeFile(authFile, 'UNRELATED_SECRET=must-not-read-as-login\nZETARIS_ADMIN_EMAIL="test-ui-user"\nZETARIS_ADMIN_PASSWORD=\'test-ui-password\'\n');
+  t.after(async () => { await unlink(authFile); await rmdir(authDir); });
+  const env = { ZETARIS_TRANSPORT: 'ui_proxy', ZETARIS_UI_BASE_URL: 'http://127.0.0.1:3000', ZETARIS_UI_AUTH_ENV_PATH: authFile, ZETARIS_MAPPING_PROOF_PATH: file };
+  let requests = 0;
+  const fetcher = async (url, options) => {
+    requests++;
+    if (url.endsWith('/api/auth/login')) {
+      assert.deepEqual(JSON.parse(options.body), { username: 'test-ui-user', password: 'test-ui-password' });
+      return new Response(JSON.stringify({ idToken: 'testHeader.testPayload.testSignature', orgId: 31 }));
+    }
+    const sql = JSON.parse(options.body).select;
+    const family = Object.keys(tables).find(key => sql.includes(' FROM ' + tables[key] + ' WHERE '));
+    const row = JSON.parse(await readFile(new URL('../seed/sources/' + family + '.json', import.meta.url), 'utf8')).records[0];
+    return new Response(JSON.stringify({ records: [row], pageNumber: 1, pageLimit: 5, totalCount: 1, totalPages: 1 }));
+  };
+  const configured = await createConfiguredZetaris({ env, fetcher });
+  const status = await getZetarisStatus({ client: configured });
+  assert.equal(requests, 0); assert.equal(status.api_transport, 'ui_proxy'); assert.equal(status.verified, false);
+  for (const secret of ['test-ui-user', 'test-ui-password', authFile]) assert.equal(JSON.stringify(status).includes(secret), false);
+  const result = await readZetaris(undefined, { client: configured });
+  assert.equal(requests, 4); assert.equal(reconcile(result.records).metrics.gap_cents, 60000);
+  assert.equal(result.zetaris_verified, false); assert.equal(result.fixture_fault_injection, false);
+  assert.ok(result.trace.every(row => row.api_transport === 'ui_proxy' && row.org_id === '31'));
+});
+
+test('UI private auth selection fails closed without borrowing direct credentials', async t => {
+  const file = await proofFile(t);
+  let requests = 0;
+  const fetcher = async () => { requests++; throw new Error('must not request'); };
+  const base = { ...configuredEnv(file), ZETARIS_TRANSPORT: 'ui_proxy', ZETARIS_UI_BASE_URL: 'http://127.0.0.1:3000' };
+  await assert.rejects(createConfiguredZetaris({ env: base, fetcher }), error => error.code === 'ZETARIS_CONFIG_MISSING');
+  const status = await getZetarisStatus({ env: base });
+  assert.equal(status.provider, 'Zetaris UI proxy');
+  assert.match(status.message, /private UI login configuration/);
+  for (const authFile of ['https://remote.example/.env', '//server/share/.env', 'C:\\private\\.env:stream'])
+    await assert.rejects(createConfiguredZetaris({ env: { ...base, ZETARIS_UI_AUTH_ENV_PATH: authFile }, fetcher }), error => error.code === 'ZETARIS_CONFIG');
+  assert.equal(requests, 0);
+});
