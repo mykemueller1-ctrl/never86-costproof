@@ -10,10 +10,17 @@ This new competition application investigates a restaurant labor target variance
 
 Use Node.js 24 or newer. There are no package dependencies beyond the checked-in, unchanged Meterless H-MEM reference.
 
+Run the checks and deterministic sample replays from the repository root:
+
 ```powershell
-node --experimental-transform-types src/server.mjs
 node --experimental-transform-types --test --test-concurrency=1 test/*.test.mjs
 node --experimental-transform-types src/sample-run.mjs
+```
+
+For the interactive UI, start the server in a separate terminal:
+
+```powershell
+node --experimental-transform-types src/server.mjs
 ```
 
 Open `http://127.0.0.1:4317` in Chrome. The service binds only to loopback. Optional local configuration goes in `.env`, based on `.env.example`; credentials and `.costproof/` are ignored by Git. Do not put credentials into the browser or a public repository.
