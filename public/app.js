@@ -210,8 +210,13 @@ $('source-mode').addEventListener('change', () => {
   $('scenario').disabled = registered;
   set('source-note', registered ? 'Reads registered synthetic sources through Zetaris. Verified source mapping is required. No fixture fallback.' : 'Preview reads labeled local source files. Fault scenarios alter fixtures only. Live sponsor calls remain separately identified.');
 });
-for (const id of ['scenario', 'mode', 'question']) $(id).addEventListener('change', () => updateZetarisConnection());
-$('question').addEventListener('input', () => updateZetarisConnection());
+function invalidateRun() {
+  updateZetarisConnection();
+  $('result').hidden = true; $('error').hidden = true; set('trace', '');
+  clearMetricReceipt('Inputs changed. Run the investigation to inspect a current receipt.');
+}
+for (const id of ['scenario', 'mode', 'question']) $(id).addEventListener('change', invalidateRun);
+$('question').addEventListener('input', invalidateRun);
 $('reviewed').addEventListener('change', () => { $('save-note').disabled = !$('reviewed').checked; });
 $('save-note').addEventListener('click', async () => {
   $('save-note').disabled = true;

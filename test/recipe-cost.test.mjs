@@ -6,6 +6,25 @@ import { EvidenceError } from '../src/reconcile.mjs';
 const byIngredient = (result, name) => result.line_bridge.find(row => row.ingredient_id === 'ingredient-' + name);
 const code = expected => error => error instanceof EvidenceError && error.code === expected;
 
+test('purchase drift normalizes pack contents before comparing prices', async () => {
+  const standard = analyzeRecipeCost(await getRecipeFixture());
+  assert.equal(byIngredient(standard, 'chicken').purchase_unit_price_change_basis_points, 2500);
+  assert.equal(byIngredient(standard, 'sauce').purchase_unit_price_change_basis_points, 0);
+  const changedPack = analyzeRecipeCost(await getRecipeFixture('pack-change'));
+  assert.equal(byIngredient(changedPack, 'chicken').purchase_unit_price_change_basis_points, 2500);
+  assert.equal(byIngredient(changedPack, 'chicken').same_case_price_changed_contents, true);
+});
+
+test('purchase drift handles a cheaper unit price and a zero baseline without invented percentage', async () => {
+  const records = await getRecipeFixture();
+  const before = records.prices.records.find(row => row.sku_id === 'sku-chicken' && row.period === 'baseline');
+  const after = records.prices.records.find(row => row.sku_id === 'sku-chicken' && row.period === 'current');
+  after.purchase_cost_cents = 3000;
+  assert.equal(byIngredient(analyzeRecipeCost(records), 'chicken').purchase_unit_price_change_basis_points, -5000);
+  before.purchase_cost_cents = 0;
+  assert.equal(byIngredient(analyzeRecipeCost(records), 'chicken').purchase_unit_price_change_basis_points, null);
+});
+
 test('four explicit fictional source families reconcile $1.96 to $2.40 and keep invoice dates distinct', async () => {
   const records = await getRecipeFixture();
   const result = analyzeRecipeCost(records);

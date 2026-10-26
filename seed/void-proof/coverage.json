@@ -1,0 +1,48 @@
+{
+  "id": "source-period-coverage",
+  "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+  "restaurant_id": "demo-101",
+  "period_start": "2026-09-01",
+  "period_end": "2026-09-30",
+  "currency": "USD",
+  "records": [
+    {
+      "id": "period-week-2026-09-21",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "period_start": "2026-09-01",
+      "period_end": "2026-09-30",
+      "currency": "USD",
+      "start_date": "2026-09-21",
+      "kind": "week",
+      "end_date": "2026-09-27",
+      "original_order_denominator_definition": "DISTINCT_ORIGINAL_ORDER_IDS_CREATED_IN_PERIOD",
+      "expected_original_order_count": 6,
+      "complete_original_orders": true,
+      "label": "September 21 to 27, 2026 (Monday to Sunday)",
+      "expected_adjustment_count": 5,
+      "complete_adjustments": true
+    },
+    {
+      "id": "period-month-2026-09",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "period_start": "2026-09-01",
+      "period_end": "2026-09-30",
+      "currency": "USD",
+      "start_date": "2026-09-01",
+      "kind": "month",
+      "end_date": "2026-09-30",
+      "original_order_denominator_definition": "DISTINCT_ORIGINAL_ORDER_IDS_CREATED_IN_PERIOD",
+      "expected_original_order_count": 8,
+      "complete_original_orders": true,
+      "label": "September 2026 (complete calendar month)",
+      "expected_adjustment_count": 6,
+      "complete_adjustments": true
+    }
+  ],
+  "source_scope": "Fictional closed-period POS export declaration, not a live-system completeness audit.",
+  "export_as_of_date": "2026-10-01",
+  "export_as_of_utc": "2026-10-01T12:00:00Z",
+  "selected_period_id": "period-week-2026-09-21"
+}

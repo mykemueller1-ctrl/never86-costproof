@@ -149,6 +149,9 @@ export function analyzeRecipeCost(records, scope = RECIPE_SCOPE) {
       portion_delta_cents: safe(BigInt(currentPortionCents) - BigInt(baselinePortionCents)),
       baseline_purchase_basis: pack(baseline, before), current_purchase_basis: pack(current, after),
       purchase_pack_changed: before.quantity !== after.quantity || before.unit !== after.unit,
+      purchase_unit_price_change_basis_points: baseline.purchase_cost_cents === 0 ? null : rounded(rational(
+        (BigInt(current.purchase_cost_cents) * before.quantity - BigInt(baseline.purchase_cost_cents) * after.quantity) * 10000n,
+        BigInt(baseline.purchase_cost_cents) * after.quantity)),
       same_case_price_changed_contents: baseline.purchase_cost_cents === current.purchase_cost_cents && before.quantity !== after.quantity,
       source_ids: [prices.id, baseline.id, current.id, mapping.id, selected.id, recipe.id, line.id] };
   });

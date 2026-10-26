@@ -1,0 +1,75 @@
+{
+  "id": "source-employee-identities",
+  "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+  "restaurant_id": "demo-101",
+  "period_start": "2026-09-01",
+  "period_end": "2026-09-30",
+  "currency": "USD",
+  "records": [
+    {
+      "id": "identity-ava",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "period_start": "2026-09-01",
+      "period_end": "2026-09-30",
+      "currency": "USD",
+      "roles": [
+        "cashier"
+      ],
+      "employee_id": "employee-ava",
+      "display_name": "Ava Demo"
+    },
+    {
+      "id": "identity-charlie",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "period_start": "2026-09-01",
+      "period_end": "2026-09-30",
+      "currency": "USD",
+      "roles": [
+        "cashier"
+      ],
+      "employee_id": "employee-charlie",
+      "display_name": "Charlie Demo"
+    },
+    {
+      "id": "identity-ben",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "period_start": "2026-09-01",
+      "period_end": "2026-09-30",
+      "currency": "USD",
+      "roles": [
+        "manager"
+      ],
+      "employee_id": "employee-ben",
+      "display_name": "Ben Demo"
+    },
+    {
+      "id": "identity-dana",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "period_start": "2026-09-01",
+      "period_end": "2026-09-30",
+      "currency": "USD",
+      "roles": [
+        "kitchen"
+      ],
+      "employee_id": "employee-dana",
+      "display_name": "Dana Demo"
+    },
+    {
+      "id": "identity-eve",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "period_start": "2026-09-01",
+      "period_end": "2026-09-30",
+      "currency": "USD",
+      "roles": [
+        "handoff"
+      ],
+      "employee_id": "employee-eve",
+      "display_name": "Eve Demo"
+    }
+  ]
+}

@@ -34,6 +34,8 @@ function display(result) {
   set('recipe-cost-percent', held ? 'Unavailable' : metrics.baseline_food_cost_percent.toFixed(2) + '% → ' + metrics.current_food_cost_percent.toFixed(2) + '%');
   set('recipe-contribution', held ? 'Unavailable' : money(metrics.baseline_gross_food_contribution_cents) + ' → ' + money(metrics.current_gross_food_contribution_cents));
   byId('recipe-lines').replaceChildren();
+  byId('purchase-rows').replaceChildren();
+  byId('purchase-panel').hidden = held;
   for (const line of result.line_bridge || []) {
     const detail = node('details', '', 'recipe-line');
     const summary = node('summary', '');
@@ -45,6 +47,18 @@ function display(result) {
       node('p', 'Usable yield: ' + (line.yield_basis_points / 100).toFixed(2) + '% · Recipe quantity: ' + line.usable_quantity + ' ' + line.usable_unit + ' across ' + metrics.portions + ' serving(s)', 'quiet'),
       receipt);
     byId('recipe-lines').append(detail);
+    const row = node('tr', '');
+    const sku = node('td', ingredientName(line.ingredient_id));
+    sku.append(node('small', line.current_purchase_basis.vendor_sku));
+    const before = node('td', purchaseLabel(line.baseline_purchase_basis));
+    before.append(node('small', line.baseline_purchase_basis.invoice_date + ' · ' + line.baseline_purchase_basis.invoice_id));
+    const after = node('td', purchaseLabel(line.current_purchase_basis));
+    after.append(node('small', line.current_purchase_basis.invoice_date + ' · ' + line.current_purchase_basis.invoice_id));
+    const points = line.purchase_unit_price_change_basis_points;
+    const change = node('td', points === null ? 'No positive baseline' : (points > 0 ? '+' : '') + (points / 100).toFixed(2) + '%');
+    change.append(node('small', line.same_case_price_changed_contents ? 'Same case price · different contents' : line.purchase_pack_changed ? 'Pack contents changed · normalized' : 'Same pack contents'));
+    row.append(sku, before, after, change);
+    byId('purchase-rows').append(row);
   }
   const adjustment = result.rounding?.portion_delta_bridge_rounding_adjustment_cents || 0;
   if (adjustment) byId('recipe-lines').append(node('p', 'Cent rounding reconciliation: ' + signedMoney(adjustment), 'quiet'));
