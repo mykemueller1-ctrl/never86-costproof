@@ -6,7 +6,7 @@ Target: three minutes. This script matches the public Node application. Keep the
 
 **0:25–1:00.** Run the complete shift. “Sales were $12,000. At a 28% target, labor allowance is $3,360. Actual straight-time wages are $3,960, leaving a $600 gap. The bridge separates $420 from the sales plan change and $180 from changed labor dollars. That reconciles the math. It does not establish waste or a staffing decision.” Open a source stamp to show the original rows and calculation.
 
-**1:00–1:35.** Show the synthetic manager statement about approved training. Review its scope, retain it in H-MEM and rerun. “The reviewed manager report changes the next check. CostProof asks for training approval and time records. Payroll stays unchanged, and the report remains unverified.” Show the provenance card and the unsent manager proposal.
+**1:00–1:35.** Show the synthetic manager statement about approved training. Review its scope, retain it in H-MEM and rerun. “CostProof recalls the scoped manager report as unverified context. In the corrected live run, the model selected that report for verification against approval and time records. Payroll stays unchanged, and the proposed check remains unsent. We did not compare this run with a run without the report.” Show the provenance card and the unsent manager proposal.
 
 **1:35–2:05.** In explicitly labeled fixture mode, choose missing wages. “Hours are insufficient to establish wage dollars. The app stops the dollar conclusion and requests the matching record.” Choose the mismatched restaurant case. “A record from another restaurant cannot join this investigation.” Do not present these fixture fault injections as changes to registered Zetaris records.
 
