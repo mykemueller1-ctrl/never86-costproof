@@ -8,12 +8,13 @@ import { Nightshift } from './nightshift.mjs';
 import { SCOPE } from './reconcile.mjs';
 import { rememberCorrection, recallCorrections } from './memory.mjs';
 import { getZetarisStatus } from './sources.mjs';
+import { analyzeRecipeCost, getRecipeFixture } from './recipe-cost.mjs';
 try { process.loadEnvFile(); } catch (e) { if (e.code !== 'ENOENT') throw e; }
 const root = fileURLToPath(new URL('../', import.meta.url));
 const host = process.env.HOST || '127.0.0.1';
 if (!['127.0.0.1', 'localhost', '::1'].includes(host)) throw new Error('CostProof must listen on loopback');
 const port = Number(process.env.PORT || 4317);
-const publicFiles = new Map([['/', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/style.css', ['style.css', 'text/css']]]);
+const publicFiles = new Map([['/', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/style.css', ['style.css', 'text/css']], ['/recipe', ['recipe.html', 'text/html']], ['/recipe.js', ['recipe.js', 'text/javascript']], ['/recipe.css', ['recipe.css', 'text/css']]]);
 function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
 async function input(req) {
   let text = '';
@@ -46,6 +47,25 @@ const server = http.createServer(async (req, res) => {
     if (!allowedHosts.has(new URL(req.headers.origin || 'http://invalid').host) || req.headers['content-type']?.split(';')[0] !== 'application/json') return send(res, 403, { error: 'Same origin JSON required' });
     if (busy) return send(res, 409, { error: 'Another investigation is running' });
     const body = await input(req);
+    if (url.pathname === '/api/recipe-cost') {
+      if (body.sourceMode !== 'fixture' || Object.keys(body).some(key => !['scenario', 'sourceMode'].includes(key))) {
+        return send(res, 400, { error: 'RECIPE_PREVIEW_ONLY', message: 'Recipe costing currently reads only the labeled synthetic fixtures. Live source and model execution are not implemented for this workflow.' });
+      }
+      busy = true;
+      try {
+        const records = await getRecipeFixture(body.scenario);
+        const result = analyzeRecipeCost(records);
+        result.source_records = records;
+        result.source_mode = 'fixture';
+        result.source_provider = 'local synthetic files';
+        result.integration = { ...result.integration, zetaris: false, nightshift_text: false };
+        result.run_id = randomUUID();
+        result.created_at_utc = new Date().toISOString();
+        await mkdir(path.join(root, '.costproof/runs'), { recursive: true });
+        await writeFile(path.join(root, '.costproof/runs', result.run_id + '.json'), JSON.stringify(result, null, 2));
+        return send(res, 200, result);
+      } finally { busy = false; }
+    }
     if (url.pathname === '/api/corrections') {
       const document = JSON.parse(await readFile(path.join(root, 'seed/sources/manager_correction.json'), 'utf8'));
       if (body.reviewed_for_scope !== true) return send(res, 400, { error: 'Review the report and scope first' });

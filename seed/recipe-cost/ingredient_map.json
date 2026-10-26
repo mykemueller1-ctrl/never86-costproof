@@ -1,0 +1,61 @@
+{
+  "id": "source-approved-ingredient-map-v1",
+  "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+  "restaurant_id": "demo-101",
+  "business_date": "2026-10-23",
+  "currency": "USD",
+  "version": "map-v1",
+  "records": [
+    {
+      "id": "mapping-chicken-v1",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "business_date": "2026-10-23",
+      "currency": "USD",
+      "vendor_id": "vendor-synthetic-01",
+      "sku_id": "sku-chicken",
+      "ingredient_id": "ingredient-chicken",
+      "vendor_sku": "SYN-CHK-01",
+      "yield_basis_points": 7500
+    },
+    {
+      "id": "mapping-cheese-v1",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "business_date": "2026-10-23",
+      "currency": "USD",
+      "vendor_id": "vendor-synthetic-01",
+      "sku_id": "sku-cheese",
+      "ingredient_id": "ingredient-cheese",
+      "vendor_sku": "SYN-CHS-02",
+      "yield_basis_points": 10000
+    },
+    {
+      "id": "mapping-tortilla-v1",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "business_date": "2026-10-23",
+      "currency": "USD",
+      "vendor_id": "vendor-synthetic-01",
+      "sku_id": "sku-tortilla",
+      "ingredient_id": "ingredient-tortilla",
+      "vendor_sku": "SYN-TOR-03",
+      "yield_basis_points": 10000
+    },
+    {
+      "id": "mapping-sauce-v1",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "business_date": "2026-10-23",
+      "currency": "USD",
+      "vendor_id": "vendor-synthetic-01",
+      "sku_id": "sku-sauce",
+      "ingredient_id": "ingredient-sauce",
+      "vendor_sku": "SYN-SAU-04",
+      "yield_basis_points": 10000
+    }
+  ],
+  "recipe_version": "recipe-v1",
+  "recipe_id": "recipe-demo-tacos",
+  "approval_status": "approved"
+}

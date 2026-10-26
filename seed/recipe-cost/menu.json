@@ -1,0 +1,12 @@
+{
+  "id": "source-menu-price-v1",
+  "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+  "restaurant_id": "demo-101",
+  "business_date": "2026-10-23",
+  "currency": "USD",
+  "price_scope": "Per serving, before tax; no delivery commission or other operating-cost allocation.",
+  "price_cents": 1000,
+  "price_excludes_tax": true,
+  "recipe_version": "recipe-v1",
+  "recipe_id": "recipe-demo-tacos"
+}

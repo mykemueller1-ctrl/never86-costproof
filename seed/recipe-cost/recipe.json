@@ -1,0 +1,53 @@
+{
+  "id": "source-recipe-bom-v1",
+  "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+  "restaurant_id": "demo-101",
+  "business_date": "2026-10-23",
+  "currency": "USD",
+  "records": [
+    {
+      "id": "bom-chicken-v1",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "business_date": "2026-10-23",
+      "currency": "USD",
+      "usable_unit": "g",
+      "ingredient_id": "ingredient-chicken",
+      "usable_quantity": 150
+    },
+    {
+      "id": "bom-cheese-v1",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "business_date": "2026-10-23",
+      "currency": "USD",
+      "usable_unit": "g",
+      "ingredient_id": "ingredient-cheese",
+      "usable_quantity": 30
+    },
+    {
+      "id": "bom-tortilla-v1",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "business_date": "2026-10-23",
+      "currency": "USD",
+      "usable_unit": "each",
+      "ingredient_id": "ingredient-tortilla",
+      "usable_quantity": 2
+    },
+    {
+      "id": "bom-sauce-v1",
+      "classification": "SYNTHETIC_COMPETITION_FIXTURE",
+      "restaurant_id": "demo-101",
+      "business_date": "2026-10-23",
+      "currency": "USD",
+      "usable_unit": "ml",
+      "ingredient_id": "ingredient-sauce",
+      "usable_quantity": 30
+    }
+  ],
+  "version": "recipe-v1",
+  "portions": 1,
+  "name": "Fictional two-taco plate",
+  "recipe_id": "recipe-demo-tacos"
+}
